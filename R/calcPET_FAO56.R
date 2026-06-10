@@ -1,0 +1,110 @@
+#' @title Calculate FAO-56 reference evapotranspiration (ET0)
+#'
+#' @description Penman-Monteith reference ET for a hypothetical grass surface
+#' (FAO Irrigation and Drainage Paper No. 56, Allen et al. 1998), following
+#' the LPJmL implementation in getpet.c (cropref = TRUE).
+#'
+#' Net radiation uses observed radiation fluxes:
+#'   SW: rsds * 86400 [J/m2/day]  (24 h mean, as in getpet.c)
+#'   LW: (lwdown - sigma*T^4) * daylength_s  [J/m2/day]  (daytime only, as in getpet.c)
+#' The aerodynamic term is also integrated over daylight hours only.
+#'
+#' Reference crop parameters (FAO 1998 / getpet.c):
+#'   albedo = 0.23, surface resistance rs = 70 s/m,
+#'   roughness length z0m = 0.123 * 0.12 m = 0.01476 m
+#'
+#' @param temp      daily mean temperature (degree Celsius) -- used for sigma*T^4
+#' @param tmax      daily maximum temperature (degree Celsius)
+#' @param tmin      daily minimum temperature (degree Celsius)
+#' @param windspeed wind speed at 10 m height (m/s)
+#' @param humid     near-surface specific humidity (kg/kg) -- variable huss in ISIMIP3b
+#' @param swdown    surface downwelling shortwave radiation (W/m2, 24 h mean) -- rsds
+#' @param lwdown    surface downwelling longwave radiation (W/m2, 24 h mean) -- rlds
+#' @param lat       latitude (decimal degrees)
+#' @param day       day of the year (DOY)
+#' @param ps        surface air pressure (Pa). Default 101325 Pa (sea level).
+#'
+#' @return FAO-56 reference evapotranspiration ET0 (mm/day)
+#' @export
+
+calcPET_FAO56 <- function(temp,
+                           tmax,
+                           tmin,
+                           windspeed,
+                           humid,
+                           swdown,
+                           lwdown,
+                           lat,
+                           day,
+                           ps = 101325
+                           ) {
+
+  sigma  <- 5.67e-8
+  Mair   <- 0.0289652
+  Mvap   <- 0.018016
+  rugas  <- 8.31446
+  cp     <- 1003.5
+  d622   <- Mvap / Mair
+  d378   <- 1 - d622
+
+  ndays_year <- 365
+  M_1_PI     <- 0.318309886183790671538
+
+  # Daylength [hours] from orbital geometry (same formula as calcPET)
+  delta <- deg2rad(-23.4 * cos(2 * pi * (day + 10.0) / ndays_year))
+  u <- sin(deg2rad(lat)) * sin(delta)
+  v <- cos(deg2rad(lat)) * cos(delta)
+  if (u >= v) {
+    daylength <- 24
+  } else if (u <= -v) {
+    daylength <- 0
+  } else {
+    hh        <- acos(-u / v)
+    daylength <- 24 * hh * M_1_PI
+  }
+  daylength_s <- daylength * 3600  # [s]
+
+  # Daytime mean temperature [degC] (getpet.c lines 61-65)
+  tamp     <- tmax - tmin
+  tair_day <- if (tamp < 0.71 / (0.66 - 0.5)) {
+    tmin + 0.5 * tamp
+  } else {
+    tmin - 0.71 + 0.66 * tamp
+  }
+
+  # FAO-56 reference crop aerodynamic resistance [s/m] (getpet.c lines 73-80)
+  z0m   <- 0.123 * 0.12
+  ustar <- windspeed * 0.41 / log(10 / z0m)
+  raH   <- log(2 / (0.1 * z0m)) / (0.41 * ustar)
+
+  # Vapor pressures [Pa] from specific humidity (getpet.c lines 81-82)
+  e    <- ps * humid / (d622 + d378 * humid)
+  esat <- 610.78 * exp(17.269 * tair_day / (237.3 + tair_day))
+
+  # Slope of saturation vapor pressure curve [Pa/K] (getpet.c line 83)
+  s <- 2502936 * exp(17.269 * tair_day / (237.3 + tair_day)) / (237.3 + tair_day)^2
+
+  # Psychrometric constant and latent heat (getpet.c macros)
+  gamma_t <- 65.05 + tair_day * 0.064
+  lambda  <- 2.495e6 - tair_day * 2380
+
+  # Air density [kg/m3] (getpet.c line 84)
+  rho <- (ps * Mair + e * Mvap) / rugas / (tair_day + 273.15)
+
+  # Net radiation [J/m2/day]
+  # SW: 24 h mean converted to daily total (getpet.c line 58)
+  # LW: daytime only (getpet.c line 57)
+  swdown_J <- swdown * 86400
+  lwnet_J  <- (lwdown - sigma * (temp + 273.15)^4) * daylength_s
+  Rn       <- swdown_J * (1 - 0.23) + lwnet_J
+
+  # Aerodynamic term [J/m2/day], daytime only (getpet.c lines 86-87)
+  aero <- rho * cp * (esat - e) / raH * daylength_s
+
+  # FAO-56 Penman-Monteith: rs = 70 s/m (getpet.c line 120)
+  rs  <- 70
+  pet <- (s * Rn + aero) / (s + gamma_t * (1 + rs / raH)) / lambda
+
+  return(max(0, pet))
+
+}

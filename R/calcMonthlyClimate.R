@@ -4,7 +4,7 @@
 #' of the rule-based crop calendars (Waha et al., 2012; Minoli et al., 2019):
 #' average monthly mean temperature (mtemp);
 #' average monthly cumulative precipitation (mprec);
-#' average monthy cumulative potential evapotranspiration (mpet);
+#' average monthly cumulative potential evapotranspiration (mpet);
 #' dryness index 1, mprec-to-mpet ratio (mppet);
 #' dryness index 2, difference of mppet of two consecutive months (mppet_diff).
 #' P-to-PET (mppet) ratio indicates the water surplus or deficit with respect to
@@ -14,13 +14,31 @@
 #' dryer than month m.
 #'
 #' @param lat latitude (decimal value)
-#' @param temp daily temperature (degree Celsius) for a number of years
+#' @param temp daily mean temperature (degree Celsius) for a number of years
 #' (syear:eyear). It should be passed in form of a vector.
 #' @param prec daily precipitation (mm) for a number of years (syear:eyear).
 #' It should be passed in form of a vector.
 #' @param syear start year in the climate time series.
 #' @param eyear end year in the climate time series.
 #' @param incl_feb29 Does the time series include February 29th in leap years?
+#' @param pet_method PET method: \code{"pt"} (default) for Priestley-Taylor
+#'   equilibrium ET (calcPET), or \code{"fao56"} for FAO-56 Penman-Monteith
+#'   reference ET (calcPET_FAO56).
+#' @param swdown  surface downwelling shortwave radiation (W/m2, 24 h mean),
+#'   vector matching length of \code{temp}. Used by both methods when supplied;
+#'   if NULL with \code{pet_method = "pt"} falls back to orbital-geometry Rn.
+#' @param lwdown  surface downwelling longwave radiation (W/m2, 24 h mean),
+#'   vector matching length of \code{temp}. Required when \code{swdown} is given.
+#' @param tmax    daily maximum temperature (degree Celsius). Required for
+#'   \code{pet_method = "fao56"}.
+#' @param tmin    daily minimum temperature (degree Celsius). Required for
+#'   \code{pet_method = "fao56"}.
+#' @param windspeed near-surface wind speed at 10 m (m/s). Required for
+#'   \code{pet_method = "fao56"}.
+#' @param humid   near-surface specific humidity (kg/kg, ISIMIP3b variable
+#'   \code{huss}). Required for \code{pet_method = "fao56"}.
+#' @param ps      surface air pressure (Pa). Used only with
+#'   \code{pet_method = "fao56"}; defaults to 101325 Pa (sea level).
 #'
 #' @return list of five vectors of length 12:
 #' mtemp, mprec, mpet, mppet, mppet_diff.
@@ -38,8 +56,18 @@ calcMonthlyClimate <- function(lat        = NULL,
                                prec       = NULL,
                                syear      = NULL,
                                eyear      = NULL,
-                               incl_feb29 = TRUE
+                               incl_feb29 = TRUE,
+                               pet_method = c("pt", "fao56"),
+                               swdown     = NULL,
+                               lwdown     = NULL,
+                               tmax       = NULL,
+                               tmin       = NULL,
+                               windspeed  = NULL,
+                               humid      = NULL,
+                               ps         = 101325
                                ) {
+
+  pet_method <- match.arg(pet_method)
 
   years   <- syear:eyear
   nyears  <- length(years)
@@ -57,9 +85,37 @@ calcMonthlyClimate <- function(lat        = NULL,
   m_dates <- date_to_month(dates)
   d_dates <- date_to_doy(dates, skip_feb29 = TRUE)
 
+  # Compute daily PET
+  if (pet_method == "fao56") {
 
-  # Compute daily PET (Potential ET)
-  pet <- mapply(calcPET, temp = temp, lat = lat, day = d_dates)
+    required <- list(tmax = tmax, tmin = tmin, windspeed = windspeed,
+                     humid = humid, swdown = swdown, lwdown = lwdown)
+    missing_vars <- names(which(sapply(required, is.null)))
+    if (length(missing_vars) > 0)
+      stop("pet_method = 'fao56' requires: ", paste(missing_vars, collapse = ", "))
+
+    pet <- mapply(calcPET_FAO56,
+                  temp      = temp,
+                  tmax      = tmax,
+                  tmin      = tmin,
+                  windspeed = windspeed,
+                  humid     = humid,
+                  swdown    = swdown,
+                  lwdown    = lwdown,
+                  lat       = lat,
+                  day       = d_dates,
+                  ps        = ps)
+
+  } else {
+
+    pet <- mapply(calcPET,
+                  temp   = temp,
+                  lat    = lat,
+                  day    = d_dates,
+                  swdown = swdown,
+                  lwdown = lwdown)
+
+  }
 
   # Compute monthly climate for each year
   mtemp_y <- array(NA, dim = c(nyears, nmonths))
@@ -68,18 +124,16 @@ calcMonthlyClimate <- function(lat        = NULL,
   for (yy in seq_len(nyears)) {
     for (mm in seq_len(nmonths)) {
 
-      # which days belong to year yy and month mm
       idx <- which(y_dates == years[yy] & m_dates == mm)
 
-      mtemp_y[yy, mm] <- mean(temp[idx]) # mean temp
-      mprec_y[yy, mm] <- sum(prec[idx])  # cumulative pr
-      mpet_y[yy, mm]  <- sum(pet[idx])   # cumulative pet
-      mppet_y[yy,mm]  <- mprec_y[yy, mm]/mpet_y[yy, mm]          # ppet ratio
+      mtemp_y[yy, mm] <- mean(temp[idx])
+      mprec_y[yy, mm] <- sum(prec[idx])
+      mpet_y[yy, mm]  <- sum(pet[idx])
+      mppet_y[yy, mm] <- mprec_y[yy, mm] / mpet_y[yy, mm]
 
     }
   }
 
-  # Compute 20-years Average
   mtemp      <- round(apply(mtemp_y, 2, mean), digits = 5)
   mprec      <- round(apply(mprec_y, 2, mean), digits = 5)
   mpet       <- round(apply(mpet_y,  2, mean), digits = 5)
