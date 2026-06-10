@@ -3,7 +3,7 @@
 #' @description Calculate equilibrium (Priestley-Taylor) potential ET as in
 #' LPJmL numeric/petpar.c.  When \code{swdown} and \code{lwdown} are supplied,
 #' net radiation is computed from observed radiation fluxes:
-#'   Rns = (1 - 0.17) * swdown * 86400  [J/m2/day]
+#'   Rns = (1 - 0.23) * swdown * 86400  [J/m2/day]  (albedo matches FAO-56)
 #'   Rnl = (lwdown - sigma * (T+273.15)^4) * 86400  [J/m2/day]
 #' Otherwise net radiation is estimated from orbital geometry with a fixed
 #' sunshine fraction (legacy behaviour, backward-compatible).
@@ -33,8 +33,7 @@ calcPET <- function(temp,
   if (!is.null(swdown) && !is.null(lwdown)) {
 
     sigma <- 5.67e-8
-    beta  <- 0.17
-    Rns   <- (1 - beta) * swdown * 86400
+    Rns   <- (1 - 0.23) * swdown * 86400
     Rnl   <- (lwdown - sigma * (temp + 273.15)^4) * 86400
     Rn    <- Rns + Rnl
     eeq   <- max(0, s / (s + gamma_t) / lambda * Rn)

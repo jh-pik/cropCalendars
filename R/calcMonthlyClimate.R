@@ -29,10 +29,6 @@
 #'   if NULL with \code{pet_method = "pt"} falls back to orbital-geometry Rn.
 #' @param lwdown  surface downwelling longwave radiation (W/m2, 24 h mean),
 #'   vector matching length of \code{temp}. Required when \code{swdown} is given.
-#' @param tmax    daily maximum temperature (degree Celsius). Required for
-#'   \code{pet_method = "fao56"}.
-#' @param tmin    daily minimum temperature (degree Celsius). Required for
-#'   \code{pet_method = "fao56"}.
 #' @param windspeed near-surface wind speed at 10 m (m/s). Required for
 #'   \code{pet_method = "fao56"}.
 #' @param humid   near-surface specific humidity (kg/kg, ISIMIP3b variable
@@ -63,8 +59,6 @@ calcMonthlyClimate <- function(lat        = NULL,
                                pet_method = c("pt", "fao56"),
                                swdown     = NULL,
                                lwdown     = NULL,
-                               tmax       = NULL,
-                               tmin       = NULL,
                                windspeed  = NULL,
                                humid      = NULL,
                                ps         = 101325
@@ -91,16 +85,14 @@ calcMonthlyClimate <- function(lat        = NULL,
   # Compute daily PET
   if (pet_method == "fao56") {
 
-    required <- list(tmax = tmax, tmin = tmin, windspeed = windspeed,
-                     humid = humid, swdown = swdown, lwdown = lwdown)
+    required <- list(windspeed = windspeed, humid = humid,
+                     swdown = swdown, lwdown = lwdown)
     missing_vars <- names(which(sapply(required, is.null)))
     if (length(missing_vars) > 0)
       stop("pet_method = 'fao56' requires: ", paste(missing_vars, collapse = ", "))
 
     pet <- mapply(calcPET_FAO56,
                   temp      = temp,
-                  tmax      = tmax,
-                  tmin      = tmin,
                   windspeed = windspeed,
                   humid     = humid,
                   swdown    = swdown,

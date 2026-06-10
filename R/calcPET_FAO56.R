@@ -16,9 +16,7 @@
 #'   ustar = u10 * 0.41 / ln(10 / z0m)
 #'   raH   = ln(2 / (0.1*z0m)) / (0.41 * ustar)
 #'
-#' @param temp      daily mean temperature (degree Celsius) -- used for sigma*T^4
-#' @param tmax      daily maximum temperature (degree Celsius)
-#' @param tmin      daily minimum temperature (degree Celsius)
+#' @param temp      daily mean temperature (degree Celsius)
 #' @param windspeed wind speed at 10 m height (m/s)
 #' @param humid     near-surface specific humidity (kg/kg) -- variable huss in ISIMIP3b
 #' @param swdown    surface downwelling shortwave radiation (W/m2, 24 h mean) -- rsds
@@ -29,8 +27,6 @@
 #' @export
 
 calcPET_FAO56 <- function(temp,
-                           tmax,
-                           tmin,
                            windspeed,
                            humid,
                            swdown,
@@ -46,14 +42,6 @@ calcPET_FAO56 <- function(temp,
   d622   <- Mvap / Mair
   d378   <- 1 - d622
 
-  # Daytime mean temperature [degC] (from getpet.c lines 61-65)
-  tamp     <- tmax - tmin
-  tair_day <- if (tamp < 0.71 / (0.66 - 0.5)) {
-    tmin + 0.5 * tamp
-  } else {
-    tmin - 0.71 + 0.66 * tamp
-  }
-
   # FAO-56 reference crop aerodynamic resistance [s/m] (getpet.c lines 73-80)
   z0m   <- 0.123 * 0.12
   ustar <- windspeed * 0.41 / log(10 / z0m)
@@ -61,17 +49,17 @@ calcPET_FAO56 <- function(temp,
 
   # Vapor pressures [Pa] from specific humidity (getpet.c lines 81-82)
   e    <- ps * humid / (d622 + d378 * humid)
-  esat <- 610.78 * exp(17.269 * tair_day / (237.3 + tair_day))
+  esat <- 610.78 * exp(17.269 * temp / (237.3 + temp))
 
   # Slope of saturation vapor pressure curve [Pa/K] (getpet.c line 83)
-  s <- 2502936 * exp(17.269 * tair_day / (237.3 + tair_day)) / (237.3 + tair_day)^2
+  s <- 2502936 * exp(17.269 * temp / (237.3 + temp)) / (237.3 + temp)^2
 
   # Psychrometric constant and latent heat (getpet.c macros)
-  gamma_t <- 65.05 + tair_day * 0.064
-  lambda  <- 2.495e6 - tair_day * 2380
+  gamma_t <- 65.05 + temp * 0.064
+  lambda  <- 2.495e6 - temp * 2380
 
   # Air density [kg/m3] (getpet.c line 84)
-  rho <- (ps * Mair + e * Mvap) / rugas / (tair_day + 273.15)
+  rho <- (ps * Mair + e * Mvap) / rugas / (temp + 273.15)
 
   # Net radiation [J/m2/day], both terms using full 24 h
   swdown_J <- swdown * 86400
