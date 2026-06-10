@@ -39,6 +39,9 @@
 #'   \code{huss}). Required for \code{pet_method = "fao56"}.
 #' @param ps      surface air pressure (Pa). Used only with
 #'   \code{pet_method = "fao56"}; defaults to 101325 Pa (sea level).
+#'   \code{lat} and \code{day} (used internally for date handling and the PT
+#'   orbital path) are not passed to \code{calcPET_FAO56}, which uses full
+#'   24 h fluxes and requires no geometric daylength.
 #'
 #' @return list of five vectors of length 12:
 #' mtemp, mprec, mpet, mppet, mppet_diff.
@@ -102,8 +105,6 @@ calcMonthlyClimate <- function(lat        = NULL,
                   humid     = humid,
                   swdown    = swdown,
                   lwdown    = lwdown,
-                  lat       = lat,
-                  day       = d_dates,
                   ps        = ps)
 
   } else {

@@ -1,17 +1,20 @@
 #' @title Calculate FAO-56 reference evapotranspiration (ET0)
 #'
 #' @description Penman-Monteith reference ET for a hypothetical grass surface
-#' (FAO Irrigation and Drainage Paper No. 56, Allen et al. 1998), following
-#' the LPJmL implementation in getpet.c (cropref = TRUE).
+#' (FAO Irrigation and Drainage Paper No. 56, Allen et al. 1998).
 #'
-#' Net radiation uses observed radiation fluxes:
-#'   SW: rsds * 86400 [J/m2/day]  (24 h mean, as in getpet.c)
-#'   LW: (lwdown - sigma*T^4) * daylength_s  [J/m2/day]  (daytime only, as in getpet.c)
-#' The aerodynamic term is also integrated over daylight hours only.
+#' All fluxes use 24 h means (standard FAO-56 daily formulation):
+#'   Rns = (1 - 0.23) * rsds * 86400  [J/m2/day]
+#'   Rnl = (rlds - sigma*T^4) * 86400  [J/m2/day]
+#'   aerodynamic term integrated over full day
 #'
-#' Reference crop parameters (FAO 1998 / getpet.c):
+#' Reference crop parameters (FAO 1998):
 #'   albedo = 0.23, surface resistance rs = 70 s/m,
 #'   roughness length z0m = 0.123 * 0.12 m = 0.01476 m
+#'
+#' Aerodynamic resistance follows LPJmL getpet.c (cropref = TRUE):
+#'   ustar = u10 * 0.41 / ln(10 / z0m)
+#'   raH   = ln(2 / (0.1*z0m)) / (0.41 * ustar)
 #'
 #' @param temp      daily mean temperature (degree Celsius) -- used for sigma*T^4
 #' @param tmax      daily maximum temperature (degree Celsius)
@@ -20,8 +23,6 @@
 #' @param humid     near-surface specific humidity (kg/kg) -- variable huss in ISIMIP3b
 #' @param swdown    surface downwelling shortwave radiation (W/m2, 24 h mean) -- rsds
 #' @param lwdown    surface downwelling longwave radiation (W/m2, 24 h mean) -- rlds
-#' @param lat       latitude (decimal degrees)
-#' @param day       day of the year (DOY)
 #' @param ps        surface air pressure (Pa). Default 101325 Pa (sea level).
 #'
 #' @return FAO-56 reference evapotranspiration ET0 (mm/day)
@@ -34,8 +35,6 @@ calcPET_FAO56 <- function(temp,
                            humid,
                            swdown,
                            lwdown,
-                           lat,
-                           day,
                            ps = 101325
                            ) {
 
@@ -47,24 +46,7 @@ calcPET_FAO56 <- function(temp,
   d622   <- Mvap / Mair
   d378   <- 1 - d622
 
-  ndays_year <- 365
-  M_1_PI     <- 0.318309886183790671538
-
-  # Daylength [hours] from orbital geometry (same formula as calcPET)
-  delta <- deg2rad(-23.4 * cos(2 * pi * (day + 10.0) / ndays_year))
-  u <- sin(deg2rad(lat)) * sin(delta)
-  v <- cos(deg2rad(lat)) * cos(delta)
-  if (u >= v) {
-    daylength <- 24
-  } else if (u <= -v) {
-    daylength <- 0
-  } else {
-    hh        <- acos(-u / v)
-    daylength <- 24 * hh * M_1_PI
-  }
-  daylength_s <- daylength * 3600  # [s]
-
-  # Daytime mean temperature [degC] (getpet.c lines 61-65)
+  # Daytime mean temperature [degC] (from getpet.c lines 61-65)
   tamp     <- tmax - tmin
   tair_day <- if (tamp < 0.71 / (0.66 - 0.5)) {
     tmin + 0.5 * tamp
@@ -91,15 +73,13 @@ calcPET_FAO56 <- function(temp,
   # Air density [kg/m3] (getpet.c line 84)
   rho <- (ps * Mair + e * Mvap) / rugas / (tair_day + 273.15)
 
-  # Net radiation [J/m2/day]
-  # SW: 24 h mean converted to daily total (getpet.c line 58)
-  # LW: daytime only (getpet.c line 57)
+  # Net radiation [J/m2/day], both terms using full 24 h
   swdown_J <- swdown * 86400
-  lwnet_J  <- (lwdown - sigma * (temp + 273.15)^4) * daylength_s
+  lwnet_J  <- (lwdown - sigma * (temp + 273.15)^4) * 86400
   Rn       <- swdown_J * (1 - 0.23) + lwnet_J
 
-  # Aerodynamic term [J/m2/day], daytime only (getpet.c lines 86-87)
-  aero <- rho * cp * (esat - e) / raH * daylength_s
+  # Aerodynamic term [J/m2/day], full day
+  aero <- rho * cp * (esat - e) / raH * 86400
 
   # FAO-56 Penman-Monteith: rs = 70 s/m (getpet.c line 120)
   rs  <- 70
