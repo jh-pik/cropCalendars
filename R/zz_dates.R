@@ -92,8 +92,10 @@ date_to_doy <- function(date       = "2010-01-29",
     doy_dec31 <- as.integer(format(as.Date(dec31), "%j"))
     # Convert date to DOY, including Feb. 29
     doy1 <- as.integer(format(as.Date(date), "%j"))
-    # If is leap year, subtract 1 to all DOYs after Feb. 28
-    doy <- ifelse(doy_dec31 == 366 & doy1 > 28,
+    # If leap year, subtract 1 from all DOYs after Feb. 28 (day-of-year 59), so
+    # Feb. 29 folds onto DOY 59 (shared with Feb. 28) and Mar. 1..Dec. 31 stay
+    # aligned with non-leap years. (Previously `> 28`, which mis-folded at Jan. 29.)
+    doy <- ifelse(doy_dec31 == 366 & doy1 > 59,
                   doy1 - 1,
                   doy1)
   } else {

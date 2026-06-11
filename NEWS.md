@@ -4,6 +4,14 @@
 
 ### Bug fixes
 
+- **`date_to_doy(skip_feb29 = TRUE)`**: corrected the leap-year fold point. The condition
+  `doy1 > 28` mis-folded at Jan. 29 (collapsing Jan. 29 onto DOY 28 and shifting the late-Jan/
+  Feb day-of-year by one in leap years). Changed to `doy1 > 59` ("after Feb. 28", whose
+  day-of-year is 59) so Feb. 29 folds onto DOY 59 (shared with Feb. 28) and Mar. 1–Dec. 31 stay
+  aligned with non-leap years. This shifts the daily temperature / P-PET climatologies
+  (`dtemp`/`dppet` from `calcMonthlyClimate`) in leap years and hence some sowing /
+  threshold-crossing dates.
+
 - **`calcDoyWetMonth`**: rewrote to operate on a 365-value daily P/PET climatology
   (DOY 1–365) instead of 12 monthly values. The previous version interpolated monthly
   values to daily and then folded the result onto a doubled (730-day) array, producing
