@@ -19,6 +19,11 @@
 
 ### Bug fixes
 
+- **`generateCropCalTSerie_isimip3`**: take `FYs`, `LYs`, `ggdir`, `ncdir`, `csvdir`, `pldir`
+  as explicit arguments instead of reading them from the caller's global environment, and
+  honour the `years_nc` argument — a stray `years_nc <- YEARSnc` had silently overwritten it
+  with a global, making the argument dead. No behaviour change for the existing pipeline call.
+
 - **`plotMap_ggplot` / `plotMapCropCalendars`**: qualify all external functions
   (`ggplot2::`, `scales::squish`, `RColorBrewer::brewer.pal`) so plotting works without those
   packages being attached; fix the `fil = landFill` typo (was a silently-ignored fill colour),

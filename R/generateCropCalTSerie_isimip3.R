@@ -16,11 +16,17 @@ generateCropCalTSerie_isimip3 <- function(
     irri       = NULL,
     SYs        = NULL,
     EYs        = NULL,
+    FYs        = NULL,
+    LYs        = NULL,
     HYs        = NULL,
     years_nc   = NULL,
     crop_ls    = NULL,
     irri_ls    = NULL,
+    ggdir      = NULL,
     output_dir = NULL,
+    ncdir      = NULL,
+    csvdir     = NULL,
+    pldir      = NULL,
     makeplot   = FALSE
 ) {
 
@@ -40,7 +46,6 @@ generateCropCalTSerie_isimip3 <- function(
   #  filter the the full time series without interruptions
   #  around 2014-2015 (shift historical to future climate).
   # ------------------------------------------------------#
-  years_nc <- YEARSnc
   which_years_nc <- which(years %in% years_nc)
 
   # Read DT crop calendar and fill-in array ----

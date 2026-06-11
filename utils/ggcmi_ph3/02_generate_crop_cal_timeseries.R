@@ -116,11 +116,17 @@ generateCropCalTSerie_isimip3(
     irri       = irri,
     SYs        = SYs,
     EYs        = EYs,
+    FYs        = FYs,
+    LYs        = LYs,
     HYs        = HYs,
     years_nc   = YEARSnc,
     crop_ls    = crop_ls,
     irri_ls    = irri_ls,
+    ggdir      = ggdir,
     output_dir = dtdir,
+    ncdir      = ncdir,
+    csvdir     = csvdir,
+    pldir      = pldir,
     makeplot   = FALSE
 )
 

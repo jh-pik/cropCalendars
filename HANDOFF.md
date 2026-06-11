@@ -281,13 +281,17 @@ utils/ggcmi_ph3/01_calc_crop_calendars.R
 
 
 - **Remove hidden global dependencies from the package functions.**
-  `generateCropCalTSerie_isimip3()` reads `ggdir` as a free/global variable
-  (R/generateCropCalTSerie_isimip3.R:56), and `generatePHUTserie_isimip3()` likewise reads
-  `grid_df`, `NCELLS`, `years`, `nyears`, `crop_ls`, `irri_ls`, `work_dir`, `LYs`,
-  `isimip3b.path` from the caller's environment. Make these explicit function arguments and
-  pass them at the call sites in `02`/`03`. Removes the fragile "inject a global, then call"
-  pattern and makes the functions self-contained/testable. Deliberate package API change —
-  do after the GFDL-ESM4 test passes, not as part of the path refactor.
+  - **(DONE) `generateCropCalTSerie_isimip3()`** now takes `FYs`/`LYs`/`ggdir`/`ncdir`/`csvdir`/
+    `pldir` as explicit args (and honours `years_nc`, previously dead). `findGlobals` shows no
+    caller-env free variables remain.
+  - **(TODO) `generatePHUTserie_isimip3()` cluster** still reads `grid_df`, `crop_ls`, `irri_ls`,
+    `work_dir`, `LYs`, `years`/`nyears` (derivable from `FYnc:LYnc`) from the caller env, plus the
+    nested helpers `get.isimip.tas()` (`isimip3b.path`) and `read.climate.input()` (8 defaults:
+    `NCELLS`, `RYEAR`, `FYEAR`, `LYEAR`, `HEADER`, `NBANDS`, `DTYPE`, `SCALAR` — most undefined
+    anywhere, so every call must pass them). This is a deep 3-function cluster and **stage 03
+    cannot be validated without a full run** (needs the stage-02 ncdf + `.clm` climate), so it was
+    deliberately deferred: do it as its own focused task *with* a stage-03 run to confirm. Same
+    applies to the stage-03 gap-fill of the one LPJmL cell the climate lacks.
 
 - **(FIXED) `date_to_doy(skip_feb29=TRUE)` leap-year fold point.**
   `R/zz_dates.R` used `doy1 > 28`, which mis-folded at **Jan 29** (DOY bin 28 got 2 days and
