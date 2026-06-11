@@ -269,3 +269,18 @@ utils/ggcmi_ph3/01_calc_crop_calendars.R
   pass them at the call sites in `02`/`03`. Removes the fragile "inject a global, then call"
   pattern and makes the functions self-contained/testable. Deliberate package API change —
   do after the GFDL-ESM4 test passes, not as part of the path refactor.
+
+- **Cache the monthly climate; split stage 01 into preprocess + per-crop steps (perf).**
+  `01_calc_crop_calendars.R` runs per crop×year and, inside the per-pixel loop, recomputes
+  the monthly climate (`calcMonthlyClimate`, 7 daily vars read + FAO-56 PET) for every crop.
+  The monthly climatology depends only on GCM×scenario×period, **not** on the crop, so it is
+  recomputed ~N_crops× redundantly — the dominant reason this pipeline is much slower than
+  the standalone one at `/p/projects/landuse/LPJmL_for_MAgPIE/crop_calendars/scripts/`. That
+  pipeline splits the work: a step-1 script computes & caches the monthly climate once per
+  GCM×scenario×period (`DT_average_monthly_climate_*.Rdata`), and a step-2 per-crop script
+  just `load()`s it. Mirror that here — factor stage 01 into (a) a climate-preprocessing
+  step that computes & caches the monthly climate once, and (b) a per-crop step that loads
+  the cache — while keeping FAO-56. The package already returns the monthly object from
+  `calcMonthlyClimate` and consumes it in `calcSowingDate`/`calcCropCalendars`, so this is a
+  driver-script restructure, not new science. (Standalone also uses Priestley-Taylor / 2
+  vars vs FAO-56 / 7 vars — a separate, intentional accuracy-vs-cost difference; keep FAO-56.)

@@ -19,7 +19,7 @@ WD=/p/projects/macmit/users/heinke/crop_calendars/cropCalendars/utils/ggcmi_ph3
 ACCOUNT=landuse
 
 # Output root: where results are written (keep trailing slash).
-OUTPUT_DIR=/p/projects/macmit/data/GGCMI/phase3/GGCMI_ph3_adaptation_cropping_calendars/
+OUTPUT_DIR=/p/projects/macmit/users/heinke/crop_calendars/output/
 
 # Climate inputs, read-only (keep trailing slash).
 CLIMATE_DIR=/p/projects/macmit/data/GGCMI/phase3/input_land_only_v2/

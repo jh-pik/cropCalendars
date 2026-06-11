@@ -5,13 +5,11 @@
 # Email:   sara.minoli@pik-potsdam.de
 # ---------------------------------------------------------------------------- #
 
-library(devtools)
 library(ncdf4)
 library(abind)
 library(data.table)
 library(foreach)
 library(cropCalendars)
-library(pryr)          # for tracking memory usage
 library(zoo)           # for rolling mean
 #library(unix)
 

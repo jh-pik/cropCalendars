@@ -92,9 +92,9 @@ Rscript --vanilla 01_calc_crop_calendars.R GFDL-ESM4 historical Maize 1991 1 1
 # Args: GCM SCENARIO CROP YEAR NNODES NTASKS  (run from this dir; work_dir = getwd())
 ```
 
-Beyond the package, the pipeline R scripts also use: `devtools`, `abind`, `foreach`,
-`pryr`, `zoo`. NetCDF post-processing (stages 4–7) requires the **NCO** and **CDO**
-command-line tools on `PATH`.
+Beyond the package, the pipeline R scripts also use: `abind`, `foreach`, `doParallel`,
+`zoo`. NetCDF post-processing (stages 4–7) requires the **NCO** and **CDO** command-line
+tools on `PATH`.
 
 Toolchain setup is centralized in **`env.sh`**, which defines two functions:
 `load_r_env` (R + packages; stages 01–03) and `load_nco_cdo_env` (NCO + CDO; stages
