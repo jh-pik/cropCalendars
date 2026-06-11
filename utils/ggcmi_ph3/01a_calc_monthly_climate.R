@@ -161,6 +161,8 @@ for (yr in years) {
   # FAO-56 PET, vectorised over all cells x days at once (calcPET_FAO56 is elementwise)
   pet  <- calcPET_FAO56(tas, sfcwind, huss, rsds, rlds, ps)
   ppet <- pr / pmax(pet, 1e-6)
+  # Only tas/pr/pet/ppet feed the accumulation below; free the PET-only inputs now.
+  rm(rsds, rlds, huss, sfcwind, ps)
 
   # Pixel validity follows the original code: skip cells with any NA in tas or pr.
   valid <- valid & (rowSums(is.na(tas)) == 0) & (rowSums(is.na(pr)) == 0)
@@ -190,7 +192,7 @@ for (yr in years) {
   }
   D_cnt <- D_cnt + tabulate(doy, nbins = 365)
 
-  rm(tas, pr, rsds, rlds, huss, sfcwind, ps, pet, ppet)
+  rm(tas, pr, pet, ppet)
   gc(verbose = FALSE)
 }
 cat("\n")
