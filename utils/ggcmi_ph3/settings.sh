@@ -27,6 +27,9 @@ CLIMATE_DIR=/p/projects/macmit/data/GGCMI/phase3/input_land_only_v2/
 # ISIMIP3b .clm climate path used by generatePHUTserie_isimip3 (keep trailing slash).
 ISIMIP3B_PATH=/p/projects/lpjml/input/scenarios/ISIMIP3bv2/
 
+# LPJmL grid file (defines the 67420 land cells / their lon-lat), read by 00_config.R.
+GRID_BIN=/p/projects/lpjml/input/historical/input_VERSION2/grid.bin
+
 # AgMIP reference crop-calendar input, read-only (keep trailing slash).
 # 02_generate_crop_cal_timeseries.R sets ggdir <- agmip_dir; generateCropCalTSerie_isimip3()
 # reads ggdir as a global (it is not a function argument), so this must stay set.

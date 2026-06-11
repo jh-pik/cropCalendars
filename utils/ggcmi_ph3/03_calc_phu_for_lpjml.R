@@ -18,7 +18,7 @@ work_dir <- getwd()
 source(file.path(work_dir, "00_config.R"))
 
 makeplot <- TRUE
-NCELLS   <- 67420
+NCELLS   <- ncells   # derived from the grid in 00_config.R
 
 # ------------------------------------ #
 # Individual-run settings

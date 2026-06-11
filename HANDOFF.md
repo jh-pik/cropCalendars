@@ -90,6 +90,7 @@ Current values:
 | `OUTPUT_DIR` | `/p/projects/macmit/data/GGCMI/phase3/GGCMI_ph3_adaptation_cropping_calendars/` | write target; group-writable, heinke can write |
 | `CLIMATE_DIR` | `/p/projects/macmit/data/GGCMI/phase3/input_land_only_v2/` | read-only input |
 | `ISIMIP3B_PATH` | `/p/projects/lpjml/input/scenarios/ISIMIP3bv2/` | `.clm` climate for PHU step |
+| `GRID_BIN` | `/p/projects/lpjml/input/historical/input_VERSION2/grid.bin` | LPJmL grid (land cells), read by `00_config.R` |
 | `AGMIP_DIR` | `/p/projects/macmit/data/GGCMI/AgMIP.input/phase3/crop_calendar/` | AgMIP reference cal., read-only; `02` sets `ggdir`, read as a global by `generateCropCalTSerie_isimip3()` |
 | `NCDF_DIR` | `${OUTPUT_DIR}crop_calendars/ncdf` | derived; ncdf tree from step 2/3 (source for `04`) |
 | `PUBLISH_DIR` | `${OUTPUT_DIR}ISIMIP3b/InputData/socioeconomic/crop_calendar` | derived; published ISIMIP3b tree (`04` writes it; `05/06/07` fix it) |
@@ -260,6 +261,17 @@ utils/ggcmi_ph3/01_calc_crop_calendars.R
 ---
 
 ## Future cleanups (non-blocking)
+
+- **Cell set / LPJmL grid usage.** `01a` now processes **all climate land cells** (the non-NA
+  cells of the first `tas` file), not the LPJmL grid — so the crop-calendar product (01a→01b→02)
+  covers every cell with climate data. The LPJmL grid (`grid_df`, read via `lpjmlkit::read_io`
+  in `00_config.R`) is only *used* by stage 03 to write the `.clm` files. For ISIMIP3b the two
+  masks differ by exactly one sub-Antarctic island cell (climate has 178.75,−49.25; LPJmL has
+  178.75,−49.75), so 01a yields 67420 cells vs the old 67419. Residual tidy-ups if desired:
+  move the `grid_df`/`read_io` load out of `00_config.R` into `03` (it is loaded for every stage
+  but only 03 uses it), and retire the now-superseded legacy `01_calc_crop_calendars.{R,sh}`
+  (kept working only because `00_config.R` still loads `grid_df`). Stage 03 should also gap-fill
+  the one LPJmL cell the climate lacks (currently NA in the `.clm`).
 
 - **`plotMap_ggplot` namespacing/bugs.** Relies on `ggplot2` and `scales` being *attached*
   (calls `map_data`, `ggplot`, `aes`, `geom_*`, `squish`, … unqualified) — it fails with

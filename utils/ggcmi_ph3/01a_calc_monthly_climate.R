@@ -48,8 +48,6 @@ cat("\n", gcm, scen, year, "\n")
 clm_dir <- paste0(output_dir, "/crop_calendars/monthly_climate/", scen, "/", gcm, "/")
 if (!dir.exists(clm_dir)) dir.create(clm_dir, recursive = TRUE)
 
-NCELLS <- nrow(grid_df)
-
 # ------------------------------------ #
 # Build the file list only for the requested GCM/scenario (select by name).
 vars <- c("tas", "pr", "rsds", "rlds", "huss", "sfcwind", "ps")
@@ -116,9 +114,9 @@ if (!isTRUE(cal_att$hasatt)) {
 }
 
 # Read one calendar year of one variable for the full grid, returning only the land
-# cells as a [NCELLS, ndays] matrix. Reads one variable at a time and frees the full
-# grid immediately, so memory stays ~one variable-year (fits the default per-cpu RAM).
-# Sets cell_lin (lon-major land-cell index) on first use, from the array dimnames.
+# cells (cell_lin, set below from the climate mask) as a [NCELLS, ndays] matrix. Reads
+# one variable at a time and frees the full grid immediately, so memory stays ~one
+# variable-year (fits the default per-cpu RAM).
 read_year_cells <- function(fnames, yr, conv = identity) {
   rng <- file_year_range(fnames)
   wi  <- which(rng$fy <= yr & rng$ly >= yr)[1]
@@ -127,23 +125,29 @@ read_year_cells <- function(fnames, yr, conv = identity) {
   dates_f <- seqDates(paste0(rng$fy[wi], "-01-01"), paste0(rng$ly[wi], "-12-31"), "day")
   pos     <- which(as.integer(substr(dates_f, 1, 4)) == yr) # 1-based day positions in file
   arr     <- cropCalendars::readNcdf(f, dim_subset = list(time = (pos[1] - 1):(pos[length(pos)] - 1)))
-  if (is.null(cell_lin)) {
-    dn       <- dimnames(arr)
-    arr_lon  <- as.numeric(dn[[1]]); arr_lat <- as.numeric(dn[[2]])
-    cell_lin <<- match(grid_df$lon, arr_lon) + (match(grid_df$lat, arr_lat) - 1) * length(arr_lon)
-  }
   conv(matrix(arr, nrow = dim(arr)[1] * dim(arr)[2])[cell_lin, , drop = FALSE])
 }
 
 # ------------------------------------ #
+# Cell set = the CLIMATE land mask (all non-NA cells of the first tas file), so the
+# crop-calendar product covers every land cell that has climate data. The LPJmL grid
+# is NOT used here; it is applied later (stage 03) when writing the .clm files.
+arr0     <- cropCalendars::readNcdf(clm_file_list[["tas"]][1], dim_subset = list(time = 0:0))
+lon_axis <- as.numeric(dimnames(arr0)[[1]]); lat_axis <- as.numeric(dimnames(arr0)[[2]])
+nlon     <- length(lon_axis)
+cell_lin <- which(!is.na(matrix(arr0, nrow = nlon)))   # lon-major land-cell indices
+NCELLS   <- length(cell_lin)
+land_lon <- lon_axis[((cell_lin - 1L) %% nlon) + 1L]
+land_lat <- lat_axis[((cell_lin - 1L) %/% nlon) + 1L]
+rm(arr0)
+cat("Climate land cells:", NCELLS, "\n")
+
 # Cell-vectorised monthly-climate accumulator, shared with calcMonthlyClimate
 # (init / addYear / finalize). Switch the PET method here: "fao56" (Penman-Monteith,
-# 7 vars) or "pt" (Priestley-Taylor; uses radiation when supplied). The algorithm
-# fixes and stages 02/03 assume "fao56".
+# 7 vars) or "pt" (Priestley-Taylor; uses radiation when supplied). 02/03 assume fao56.
 pet_method <- "fao56"
 acc        <- initMonthlyClimate(NCELLS, pet_method = pet_method)
 valid      <- rep(TRUE, NCELLS)  # cells with any NA in tas/pr are dropped at the end
-cell_lin   <- NULL               # lon-major index of land cells into the [720,360] grid
 
 cat("Streaming", nyears, "years (PET vectorised over", NCELLS, "cells)...\n")
 for (yr in years) {
@@ -164,7 +168,7 @@ for (yr in years) {
   acc <- addYearMonthlyClimate(
     acc, temp = tas, prec = pr, dates = dts,
     swdown = rsds, lwdown = rlds, windspeed = sfcwind, humid = huss, ps = ps,
-    lat = grid_df$lat
+    lat = land_lat
   )
 
   rm(tas, pr, rsds, rlds, huss, sfcwind, ps)
@@ -177,7 +181,7 @@ cat("\n")
 # per-pixel code would have produced).
 mclm <- finalizeMonthlyClimate(acc)
 keep <- which(valid)
-grid_clm   <- grid_df[keep, c("lon", "lat")]
+grid_clm   <- data.frame(lon = land_lon[keep], lat = land_lat[keep])
 MTEMP      <- mclm$mtemp[keep, , drop = FALSE]
 MPREC      <- mclm$mprec[keep, , drop = FALSE]
 MPET       <- mclm$mpet[keep, , drop = FALSE]

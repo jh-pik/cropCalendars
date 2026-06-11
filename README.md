@@ -77,7 +77,7 @@ Stages (run in order):
 | Stage | Script | Does | Needs |
 |---|---|---|---|
 | config | `00_config.R` | sourced by 01–03; reads `settings.sh`, crop lists, grid | R + package |
-| 1a | `01a_calc_monthly_climate.{R,sh}` | cache crop-independent monthly climate per GCM×scenario×window | R + package |
+| 1a | `01a_calc_monthly_climate.{R,sh}` | cache crop-independent monthly climate per GCM×scenario×window, for **all climate land cells** | R + package |
 | 1b | `01b_calc_crop_calendars.{R,sh}` | crop calendars per crop from the 1a cache → `DT/*.Rdata` | R + package |
 | 1 (legacy) | `01_calc_crop_calendars.{R,sh}` | fused single-step version of 1a+1b (recomputes climate per crop; kept for reference) | R + package |
 | 2 | `02_generate_crop_cal_timeseries.{R,sh}` | assemble time series → NetCDF | R + package, AgMIP ref. |
@@ -94,7 +94,8 @@ Rscript --vanilla 01_calc_crop_calendars.R GFDL-ESM4 historical Maize 1991 1 1
 # Args: GCM SCENARIO CROP YEAR NNODES NTASKS  (run from this dir; work_dir = getwd())
 ```
 
-Beyond the package, the pipeline R scripts also use: `abind`, `foreach`, `doParallel`,
+Beyond the package, the pipeline R scripts also use: `lpjmlkit` (reads the LPJmL grid),
+`abind`, `foreach`, `doParallel`,
 `zoo`. NetCDF post-processing (stages 4–7) requires the **NCO** and **CDO** command-line
 tools on `PATH`.
 
@@ -123,9 +124,9 @@ few concrete places — to run it elsewhere, replace each:
   - `ISIMIP3B_PATH` — ISIMIP3b `.clm` binary climate, read by `get.isimip.tas()` in the
     PHU stage. This reader assumes the LPJmL `.clm` format and file naming.
   - `AGMIP_DIR` — AgMIP reference crop calendars (NetCDF), used by stage 2.
-  - **LPJmL `grid.bin`** — still hardcoded in `00_config.R` (`readGridLPJmL` default
-    `fname`, and `ncells = 67420` for the 0.5° global land grid). Point this at your grid
-    or replace `grid_df` with your own `lon`/`lat` table.
+  - `GRID_BIN` — LPJmL `grid.bin` defining the land cells (read by `00_config.R`). Point this
+    at your grid, or replace `grid_df` with your own `lon`/`lat` table. (The cell count
+    `ncells = 67420` for the 0.5° global land grid is still hardcoded in `00_config.R`.)
 - **Grid / resolution.** Stage 6 hardcodes `lat/360, lon/720` (0.5° global). Change for a
   different grid.
 
