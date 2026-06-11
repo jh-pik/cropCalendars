@@ -39,8 +39,15 @@
 #'   orbital path) are not passed to \code{calcPET_FAO56}, which uses full
 #'   24 h fluxes and requires no geometric daylength.
 #'
-#' @return list of five vectors of length 12:
-#' mtemp, mprec, mpet, mppet, mppet_diff.
+#' @return list with five monthly vectors (length 12) and two daily vectors
+#' (length 365):
+#' \describe{
+#'   \item{mtemp, mprec, mpet, mppet, mppet_diff}{Monthly climate (length 12).}
+#'   \item{dtemp}{Climatological daily mean temperature (°C), one value per
+#'     DOY 1–365, averaged across years. Used by \code{calcDoyCrossThreshold}.}
+#'   \item{dppet}{Climatological daily P/PET ratio, one value per DOY 1–365,
+#'     averaged across years. Used by \code{calcDoyWetMonth}.}
+#' }
 #'
 #' @examples
 #' d_temp <- matrix(rnorm(365*3, 15), nrow = 3)
@@ -101,12 +108,12 @@ calcMonthlyClimate <- function(lat        = NULL,
 
   } else {
 
-    pet <- mapply(calcPET,
-                  temp   = temp,
-                  lat    = lat,
-                  day    = d_dates,
-                  swdown = swdown,
-                  lwdown = lwdown)
+    if (!is.null(swdown) && !is.null(lwdown)) {
+      pet <- mapply(calcPET, temp = temp, lat = lat, day = d_dates,
+                    swdown = swdown, lwdown = lwdown)
+    } else {
+      pet <- mapply(calcPET, temp = temp, lat = lat, day = d_dates)
+    }
 
   }
 
@@ -137,11 +144,18 @@ calcMonthlyClimate <- function(lat        = NULL,
   names(mpet)  <- names(mppet) <- c("month" = seq_len(12))
   names(mppet_diff) <- c("month" = seq_len(12))
 
+  # Climatological daily arrays (365 values, one per DOY, averaged across years)
+  ppet_daily <- prec / pmax(pet, 1e-6)
+  dtemp <- as.vector(tapply(temp,       d_dates, mean))
+  dppet <- as.vector(tapply(ppet_daily, d_dates, mean))
+
   return(list(mtemp      = mtemp,
               mprec      = mprec,
               mpet       = mpet,
               mppet      = mppet,
-              mppet_diff = mppet_diff
+              mppet_diff = mppet_diff,
+              dtemp      = dtemp,
+              dppet      = dppet
               )
          )
 }

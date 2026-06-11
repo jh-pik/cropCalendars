@@ -29,11 +29,13 @@ calcCropCalendars <- function(lon          = NULL,
     cropparam_file = croppar_file
   )
 
-  # Get monthly weather data of the grid cell
+  # Get weather data of the grid cell
   mtemp      <- mclimate$mtemp
   mprec      <- mclimate$mprec
   mppet      <- mclimate$mppet
   mppet_diff <- mclimate$mppet_diff
+  dtemp      <- mclimate$dtemp
+  dppet      <- mclimate$dppet
 
   # Seasonality type
   seasonality <- calcSeasonality(
@@ -46,7 +48,8 @@ calcCropCalendars <- function(lon          = NULL,
   sowing <- calcSowingDate(
     croppar      = crop_parameters,
     monthly_temp = mtemp,
-    monthly_ppet = mppet,
+    daily_ppet   = dppet,
+    daily_temp   = dtemp,
     seasonality  = seasonality,
     lat          = lat
   )

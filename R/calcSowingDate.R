@@ -1,15 +1,23 @@
 #' @title Calculate sowing date (Waha et al., 2012)
 #'
 #' @param monthly_temp Numeric vector of length 12. Average (e.g. 20-years)
-#' monthly mean temperatures (degree Celsius).
-#' @param monthly_ppet Numeric vector of length 12. Average (e.g. 20-years)
-#' monthly P/PET ratio.
+#' monthly mean temperatures (degree Celsius). Used for seasonality type
+#' classification and to identify the coldest month.
+#' @param daily_ppet Numeric vector of length 365. Climatological daily P/PET
+#' ratio (one value per DOY, averaged across years). Typically the
+#' \code{dppet} element from \code{calcMonthlyClimate}. Used by
+#' \code{calcDoyWetMonth} to find the start of the wet season.
+#' @param daily_temp Numeric vector of length 365. Climatological daily mean
+#' temperature (°C), one value per DOY. Typically the \code{dtemp} element
+#' from \code{calcMonthlyClimate}. Used by \code{calcDoyCrossThreshold} to
+#' find spring/fall threshold crossings.
 #' @param seasonality character value indicating the seasonality type as
 #' computed by calcSeasonality
 #' @export
 calcSowingDate <- function(croppar,
                            monthly_temp,
-                           monthly_ppet,
+                           daily_ppet,
+                           daily_temp,
                            seasonality,
                            lat
                            ) {
@@ -45,7 +53,7 @@ calcSowingDate <- function(croppar,
   } else {
     # "Mild winter" (allowing vernalizing crops)
     firstwinterdoy <- calcDoyCrossThreshold(
-      monthly_temp, temp_fall)[["doy_cross_down"]]
+      daily_temp, temp_fall)[["doy_cross_down"]]
 
   }
 
@@ -59,7 +67,7 @@ calcSowingDate <- function(croppar,
 
   # First day of spring
   firstspringdoy   <- calcDoyCrossThreshold(
-    monthly_temp, temp_spring)[["doy_cross_up"]]
+    daily_temp, temp_spring)[["doy_cross_up"]]
   firstspringmonth <- ifelse(
     firstspringdoy == -9999, DEFAULT_MONTH, doy2month(firstspringdoy)
     )
@@ -100,7 +108,7 @@ calcSowingDate <- function(croppar,
 
     } else if (seasonality == "PREC" || seasonality == "PRECTEMP") {
 
-      sowing_doy <- calcDoyWetMonth(monthly_ppet)
+      sowing_doy <- calcDoyWetMonth(daily_ppet)
       sowing_month <- doy2month(sowing_doy)
       sowing_season <- "spring"
 
