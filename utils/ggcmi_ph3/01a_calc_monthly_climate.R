@@ -95,6 +95,26 @@ file_year_range <- function(fnames) {
 yr_tas <- file_year_range(clm_file_list[["tas"]])
 if (!any(yr_tas$fy <= syear & yr_tas$ly >= syear)) stop("Climate file for ", syear, " not found.")
 
+# Guard: this script assumes a real, leap-aware calendar. seqDates() builds a
+# proleptic-Gregorian day sequence and the per-year day positions / leap handling
+# depend on it; a noleap (365_day) or 360_day dataset would silently mis-position
+# days. Check the CF time:calendar attribute of the first file and refuse if it is
+# not leap-aware (in case a different climate dataset is plugged in).
+accepted_cal <- c("proleptic_gregorian", "standard", "gregorian")
+nc_chk <- ncdf4::nc_open(clm_file_list[["tas"]][1])
+cal_att <- ncdf4::ncatt_get(nc_chk, "time", "calendar")
+ncdf4::nc_close(nc_chk)
+if (!isTRUE(cal_att$hasatt)) {
+  warning("No time:calendar attribute found — assuming a leap-aware calendar.")
+} else if (!(tolower(cal_att$value) %in% accepted_cal)) {
+  stop("Unsupported time:calendar = '", cal_att$value, "' in\n  ",
+       clm_file_list[["tas"]][1],
+       "\n  01a assumes a leap-aware calendar (", paste(accepted_cal, collapse = ", "),
+       "); a noleap/365_day/360_day dataset needs different day handling.")
+} else {
+  cat("time:calendar =", cal_att$value, "\n")
+}
+
 # Read one calendar year of one variable for the full grid, returning only the land
 # cells as a [NCELLS, ndays] matrix. Reads one variable at a time and frees the full
 # grid immediately, so memory stays ~one variable-year (fits the default per-cpu RAM).

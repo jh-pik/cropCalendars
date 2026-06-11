@@ -270,6 +270,21 @@ utils/ggcmi_ph3/01_calc_crop_calendars.R
   pattern and makes the functions self-contained/testable. Deliberate package API change —
   do after the GFDL-ESM4 test passes, not as part of the path refactor.
 
+- **`date_to_doy(skip_feb29=TRUE)` folds at the wrong day (likely bug, package/master).**
+  `R/zz_dates.R`: `doy <- ifelse(doy_dec31 == 366 & doy1 > 28, doy1 - 1, doy1)`. The comment
+  says "subtract 1 to all DOYs after Feb. 28", but Feb 28's day-of-year is **59**, not 28.
+  With `> 28` the fold happens at **Jan 29**: in leap years DOY bin 28 gets 2 days (Jan 28 +
+  Jan 29) and DOY 29–59 are shifted one day vs non-leap years (e.g. Feb 28 → DOY 58 in a leap
+  year, 59 otherwise). The intended `> 59` would fold Feb 29 onto DOY 59 (sharing Feb 28) with
+  everything else aligned. Result is still 365 bins and nothing is dropped — it is a ~1-day
+  smear of the late-Jan/Feb daily climatology (`dtemp`/`dppet`) in leap years, feeding
+  `calcSowingDate` (wet-season / threshold-crossing DOYs). Fixing `28 → 59` is a deliberate
+  science change (shifts some sowing dates) — re-validate if changed. NB `01a` reproduces the
+  current behavior exactly (it calls the same `date_to_doy`), so the cache matches the
+  reference bug-for-bug; `01a` also now guards the input `time:calendar` (must be leap-aware).
+  (`skip_feb29=FALSE` is worse for a 365-climatology: it yields 366 bins with a leap-only-sparse
+  bin 366 and conflates Feb 29 with Mar 1 — `calcMonthlyClimate` correctly hardcodes `TRUE`.)
+
 - **(DONE) Cache the monthly climate; split stage 01 into preprocess + per-crop steps.**
   `01a_calc_monthly_climate.{R,sh}` computes & caches the crop-independent monthly climate
   once per GCM×scenario×window → `crop_calendars/monthly_climate/<scen>/<gcm>/
