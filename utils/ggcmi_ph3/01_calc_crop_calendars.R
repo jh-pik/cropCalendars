@@ -89,71 +89,70 @@ if(parallel == TRUE) {
 #  calculate crop calendars for one sim configuration.
 vars <- c("tas", "pr", "rsds", "rlds", "huss", "sfcwind", "ps")
 clm_file_list <- list()
+# Build the file list only for the requested GCM/scenario (gcm/scen from args).
+# NB: select by name, not by loop counter — the previous gcms[gg]/scens[sc] left
+# gg/sc at the last config index, so every job read the last GCM's files.
 for (vv in seq(length(vars))) {
   cat("\n", vars[vv], "\n-----")
-  for (gg in seq_len(length(gcms))) {
-    for (sc in seq_len(length(scens))) {
 
-      if (length(grep("ssp", scens[sc])) > 0) {
-        # If SSP, concatenate also the last two files from historical scenario
-        fnames1 <- paste_ggcmi3_clm_fname(
-          path1         = climate_dir,
-          path2         = "",
-          clm_scenario  = "historical",
-          clm_forcing   = gcms[gg],
-          ens_member    = enms[gcms[gg]],
-          bias_adj      = "w5e5",
-          clm_var       = vars[vv],
-          extent        = "global",
-          time_step     = "daily",
-          start_year    = syears[["historical"]],
-          end_year      = eyears[["historical"]],
-          file_ext      = ".nc"
-        )
-      } else {
-        fnames1 <- NULL
-      }
-
-      fnames2 <- paste_ggcmi3_clm_fname(
-        path1         = climate_dir,
-        path2         = "",
-        clm_scenario  = scens[sc],
-        clm_forcing   = gcms[gg],
-        ens_member    = enms[gcms[gg]],
-        bias_adj      = "w5e5",
-        clm_var       = vars[vv],
-        extent        = "global",
-        time_step     = "daily",
-        start_year    = syears[[scens[sc]]],
-        end_year      = eyears[[scens[sc]]],
-        file_ext      = ".nc"
-      )
-
-      # Check if all files exist
-      cat(paste0("\n", gcms[gg], " ", scens[sc], "\t",
-          all(file.exists(c(fnames1, fnames2)))))
-
-      clm_file_list[[vars[vv]]][[gcms[gg]]][[scens[sc]]] <- c(fnames1, fnames2)
-    }
+  if (length(grep("ssp", scen)) > 0) {
+    # If SSP, concatenate also the historical files (needed for the climate window)
+    fnames1 <- paste_ggcmi3_clm_fname(
+      path1         = climate_dir,
+      path2         = "",
+      clm_scenario  = "historical",
+      clm_forcing   = gcm,
+      ens_member    = enms[gcm],
+      bias_adj      = "w5e5",
+      clm_var       = vars[vv],
+      extent        = "global",
+      time_step     = "daily",
+      start_year    = syears[["historical"]],
+      end_year      = eyears[["historical"]],
+      file_ext      = ".nc"
+    )
+  } else {
+    fnames1 <- NULL
   }
+
+  fnames2 <- paste_ggcmi3_clm_fname(
+    path1         = climate_dir,
+    path2         = "",
+    clm_scenario  = scen,
+    clm_forcing   = gcm,
+    ens_member    = enms[gcm],
+    bias_adj      = "w5e5",
+    clm_var       = vars[vv],
+    extent        = "global",
+    time_step     = "daily",
+    start_year    = syears[[scen]],
+    end_year      = eyears[[scen]],
+    file_ext      = ".nc"
+  )
+
+  # Check if all files exist
+  cat(paste0("\n", gcm, " ", scen, "\t",
+      all(file.exists(c(fnames1, fnames2)))))
+
+  clm_file_list[[vars[vv]]][[gcm]][[scen]] <- c(fnames1, fnames2)
 }
 
 # Get all climate files needed for this scenario
-fnames_tas     <- clm_file_list[["tas"]][[gcms[gg]]][[scens[sc]]]
-fnames_pr      <- clm_file_list[["pr"]][[gcms[gg]]][[scens[sc]]]
-fnames_rsds    <- clm_file_list[["rsds"]][[gcms[gg]]][[scens[sc]]]
-fnames_rlds    <- clm_file_list[["rlds"]][[gcms[gg]]][[scens[sc]]]
-fnames_huss    <- clm_file_list[["huss"]][[gcms[gg]]][[scens[sc]]]
-fnames_sfcwind <- clm_file_list[["sfcwind"]][[gcms[gg]]][[scens[sc]]]
-fnames_ps      <- clm_file_list[["ps"]][[gcms[gg]]][[scens[sc]]]
+fnames_tas     <- clm_file_list[["tas"]][[gcm]][[scen]]
+fnames_pr      <- clm_file_list[["pr"]][[gcm]][[scen]]
+fnames_rsds    <- clm_file_list[["rsds"]][[gcm]][[scen]]
+fnames_rlds    <- clm_file_list[["rlds"]][[gcm]][[scen]]
+fnames_huss    <- clm_file_list[["huss"]][[gcm]][[scen]]
+fnames_sfcwind <- clm_file_list[["sfcwind"]][[gcm]][[scen]]
+fnames_ps      <- clm_file_list[["ps"]][[gcm]][[scen]]
 
 # ------------------------------------ #
 # First and last year of crop calendar calculation in this scenario
 ccal_first_year <- ccal_years[
-  which.min(abs(min(syears[[scens[sc]]]) - ccal_years))
+  which.min(abs(min(syears[[scen]]) - ccal_years))
   ]
 ccal_last_year  <- ccal_years[
-  which.min(min(eyears[[scens[sc]]]) - ccal_years)
+  which.min(min(eyears[[scen]]) - ccal_years)
   ]
 # Index of the years
 ccal_y_idx <- (
