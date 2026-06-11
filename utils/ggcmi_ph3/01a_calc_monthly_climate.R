@@ -180,7 +180,9 @@ for (yr in years) {
     M_tas[,  m] <- M_tas[,  m] + rowMeans(tas[, dom, drop = FALSE])
     M_pr[,   m] <- M_pr[,   m] + pr_mon
     M_pet[,  m] <- M_pet[,  m] + pet_mon
-    M_ppet[, m] <- M_ppet[, m] + pr_mon / pet_mon
+    # Floor monthly PET (matches calcMonthlyClimate): avoids 0/0 = NaN / x/0 = Inf
+    # for zero-PET months in deep cold, which would propagate into mppet.
+    M_ppet[, m] <- M_ppet[, m] + pr_mon / pmax(pet_mon, 1e-6)
   }
 
   # DOY accumulation: add each day to its DOY column (a DOY can recur within a leap

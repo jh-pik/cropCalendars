@@ -115,7 +115,11 @@ calcMonthlyClimate <- function(lat        = NULL,
   mtemp_y <- tapply(temp, ym, mean)
   mprec_y <- tapply(prec, ym, sum)
   mpet_y  <- tapply(pet,  ym, sum)
-  mppet_y <- mprec_y / mpet_y
+  # Floor monthly PET like the daily P/PET (see dppet below): FAO-56 PET can be
+  # clamped to 0 in deep cold, and a month with pet_sum == 0 would give Inf or
+  # (with prec_sum == 0) NaN, which propagates to mppet and breaks downstream
+  # rules (e.g. calcHarvestDateVector's min(monthly_ppet)).
+  mppet_y <- mprec_y / pmax(mpet_y, 1e-6)
 
   mtemp      <- round(apply(mtemp_y, 2, mean), digits = 5)
   mprec      <- round(apply(mprec_y, 2, mean), digits = 5)

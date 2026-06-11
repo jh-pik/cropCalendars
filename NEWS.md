@@ -4,6 +4,12 @@
 
 ### Bug fixes
 
+- **`calcMonthlyClimate`**: floor the monthly P/PET (`mppet`) denominator with
+  `pmax(mpet_y, 1e-6)`, mirroring the daily `dppet`. FAO-56 PET can be clamped to 0 in deep
+  cold; a month with zero PET (and, with zero precipitation, `0/0`) produced `Inf`/`NaN` in
+  `mppet`, which propagated to high-latitude cells and crashed downstream rules
+  (`calcHarvestDateVector`: `min(monthly_ppet)`). Now finite everywhere.
+
 - **`calcPET_FAO56`**: preserve the shape of the inputs. The final `pmax(0, pet)` dropped the
   `dim` attribute, so passing matrices (cell-vectorised callers, e.g. all cells × days at once)
   returned a vector. Now clamps at 0 while restoring `dim`; NA-safe; vector inputs unchanged.
