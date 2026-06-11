@@ -88,7 +88,7 @@ if(parallel == TRUE) {
 # ------------------------------------ #
 # Loop through all GCMs and scenarios and list all files needed to
 #  calculate crop calendars for one sim configuration.
-vars <- c("tas", "pr")
+vars <- c("tas", "pr", "rsds", "rlds", "huss", "sfcwind", "ps")
 clm_file_list <- list()
 for (vv in seq(length(vars))) {
   cat("\n", vars[vv], "\n-----")
@@ -140,8 +140,13 @@ for (vv in seq(length(vars))) {
 }
 
 # Get all climate files needed for this scenario
-fnames_tas <- clm_file_list[["tas"]][[gcms[gg]]][[scens[sc]]]
-fnames_pr  <- clm_file_list[["pr"]][[gcms[gg]]][[scens[sc]]]
+fnames_tas     <- clm_file_list[["tas"]][[gcms[gg]]][[scens[sc]]]
+fnames_pr      <- clm_file_list[["pr"]][[gcms[gg]]][[scens[sc]]]
+fnames_rsds    <- clm_file_list[["rsds"]][[gcms[gg]]][[scens[sc]]]
+fnames_rlds    <- clm_file_list[["rlds"]][[gcms[gg]]][[scens[sc]]]
+fnames_huss    <- clm_file_list[["huss"]][[gcms[gg]]][[scens[sc]]]
+fnames_sfcwind <- clm_file_list[["sfcwind"]][[gcms[gg]]][[scens[sc]]]
+fnames_ps      <- clm_file_list[["ps"]][[gcms[gg]]][[scens[sc]]]
 
 # ------------------------------------ #
 # First and last year of crop calendar calculation in this scenario
@@ -203,40 +208,35 @@ output_df <- foreach(lo        = seq_len(ncol(lon_matrix)),
   # Subset grid for lons of this slice
   grid_sub <- subset(grid_df, lon %in% lon_matrix[, lo])
 
-  tas_array <- pr_array <- NULL
+  tas_array     <- pr_array  <- NULL
+  rsds_array    <- rlds_array <- NULL
+  huss_array    <- sfcwind_array <- ps_array <- NULL
 
   for (i in idx_first_file:idx_last_file) {
-    # Track memory used
-    #print(pryr::mem_used())
 
     # Read climate data
-    tas <- cropCalendars::readNcdf(
-      file_name = fnames_tas[i],
-      dim_subset = list(lon = lon_matrix[, lo])
-      )
-  #    str(tas)
-    pr  <- cropCalendars::readNcdf(
-      file_name = fnames_pr[i],
-      dim_subset = list(lon = lon_matrix[, lo])
-      )
- #     str(pr)
+    tas     <- cropCalendars::readNcdf(file_name = fnames_tas[i],     dim_subset = list(lon = lon_matrix[, lo]))
+    pr      <- cropCalendars::readNcdf(file_name = fnames_pr[i],      dim_subset = list(lon = lon_matrix[, lo]))
+    rsds    <- cropCalendars::readNcdf(file_name = fnames_rsds[i],    dim_subset = list(lon = lon_matrix[, lo]))
+    rlds    <- cropCalendars::readNcdf(file_name = fnames_rlds[i],    dim_subset = list(lon = lon_matrix[, lo]))
+    huss    <- cropCalendars::readNcdf(file_name = fnames_huss[i],    dim_subset = list(lon = lon_matrix[, lo]))
+    sfcwind <- cropCalendars::readNcdf(file_name = fnames_sfcwind[i], dim_subset = list(lon = lon_matrix[, lo]))
+    ps      <- cropCalendars::readNcdf(file_name = fnames_ps[i],      dim_subset = list(lon = lon_matrix[, lo]))
 
-    # Convert units
+    # Convert units (tas: K->°C; pr: kg/m2/s -> mm/day; others: no conversion)
     tas <- k2deg(tas)
-    pr  <- 60 * 60 * 24 * (pr)
+    pr  <- 60 * 60 * 24 * pr
 
     # Bind array along time dimension
-    tas_array <- abind(tas_array, tas, use.dnns = TRUE)
-    pr_array  <- abind(pr_array, pr, use.dnns = TRUE)
-#str(tas_array)
-#str(pr_array)
-#length(tas_array)
-#length(pr_array)
-#length(tas_array[is.finite(tas_array)])
-#length(pr_array[is.finite(pr_array)])
-    #print(gc(verbose = TRUE))
+    tas_array     <- abind(tas_array,     tas,     use.dnns = TRUE)
+    pr_array      <- abind(pr_array,      pr,      use.dnns = TRUE)
+    rsds_array    <- abind(rsds_array,    rsds,    use.dnns = TRUE)
+    rlds_array    <- abind(rlds_array,    rlds,    use.dnns = TRUE)
+    huss_array    <- abind(huss_array,    huss,    use.dnns = TRUE)
+    sfcwind_array <- abind(sfcwind_array, sfcwind, use.dnns = TRUE)
+    ps_array      <- abind(ps_array,      ps,      use.dnns = TRUE)
 
-    rm(tas, pr)
+    rm(tas, pr, rsds, rlds, huss, sfcwind, ps)
   } # i
 
   # Track memory used
@@ -250,12 +250,14 @@ output_df <- foreach(lo        = seq_len(ncol(lon_matrix)),
     lat_pix <- grid_sub$lat[j]
   #  cat(lat_pix, "\t")
 
-    tas_pix <- tas_array[as.character(lon_pix), as.character(lat_pix), ]
- #   cat("\n", length(tas_pix), "\t")
-  #  cat(any(is.na(tas_pix)), "\t")
-    pr_pix  <- pr_array[as.character(lon_pix), as.character(lat_pix), ]
- #   cat("\n", length(pr_pix), "\t")
-  #  cat(any(is.na(pr_pix)), "\t") 
+    tas_pix     <- tas_array[as.character(lon_pix),     as.character(lat_pix), ]
+    pr_pix      <- pr_array[as.character(lon_pix),      as.character(lat_pix), ]
+    rsds_pix    <- rsds_array[as.character(lon_pix),    as.character(lat_pix), ]
+    rlds_pix    <- rlds_array[as.character(lon_pix),    as.character(lat_pix), ]
+    huss_pix    <- huss_array[as.character(lon_pix),    as.character(lat_pix), ]
+    sfcwind_pix <- sfcwind_array[as.character(lon_pix), as.character(lat_pix), ]
+    ps_pix      <- ps_array[as.character(lon_pix),      as.character(lat_pix), ]
+
     if (any(is.na(tas_pix)) | any(is.na(pr_pix))) {
       cat("\nMissing values, skipping ", lon_pix, lat_pix)
       next
@@ -267,7 +269,6 @@ output_df <- foreach(lo        = seq_len(ncol(lon_matrix)),
       end_date   = paste0(eyear, "-12-31"),
       step = "day"
     )
-#    cat(dates[1], "\t", dates[length(dates)], "\t")
     names(tas_pix) <- names(pr_pix) <- dates
 
     # Calculate monthly climate
@@ -277,7 +278,13 @@ output_df <- foreach(lo        = seq_len(ncol(lon_matrix)),
       prec       = pr_pix,
       syear      = syear,
       eyear      = eyear,
-      incl_feb29 = TRUE
+      incl_feb29 = TRUE,
+      pet_method = "fao56",
+      swdown     = rsds_pix,
+      lwdown     = rlds_pix,
+      windspeed  = sfcwind_pix,
+      humid      = huss_pix,
+      ps         = ps_pix
       )
 #cat("\n", str(mclm), "\t")  
     # Calculate crop calendar
