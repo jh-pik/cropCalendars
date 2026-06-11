@@ -261,6 +261,15 @@ utils/ggcmi_ph3/01_calc_crop_calendars.R
 
 ## Future cleanups (non-blocking)
 
+- **`plotMap_ggplot` namespacing/bugs.** Relies on `ggplot2` and `scales` being *attached*
+  (calls `map_data`, `ggplot`, `aes`, `geom_*`, `squish`, … unqualified) — it fails with
+  "could not find function 'map_data'" when only the package namespace is loaded. Also has a
+  typo `fil = landFill` (should be `fill =`) and deprecated `aes_string`/`size`. Proper fix:
+  add `@importFrom` (ggplot2/scales) or qualify the calls, fix the typo, modernise. For now
+  `01b` attaches ggplot2/scales and wraps the plot call in `tryCatch` (best-effort; the DT is
+  saved first), so plotting never fails the job.
+
+
 - **Remove hidden global dependencies from the package functions.**
   `generateCropCalTSerie_isimip3()` reads `ggdir` as a free/global variable
   (R/generateCropCalTSerie_isimip3.R:56), and `generatePHUTserie_isimip3()` likewise reads
