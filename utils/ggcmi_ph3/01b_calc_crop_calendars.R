@@ -98,15 +98,15 @@ cat("\n", fnout)
 save(DT, file = fnout)
 
 # Plot maps (best-effort: the DT is already saved, so a plotting failure must not
-# fail the job). plotMap_ggplot relies on ggplot2/scales being attached.
+# fail the job).
 if (plot_results) {
   fnpdf <- paste0(plot_dir, "map_crop_calendars_",
                   cro, "_", gcm, "_", scen, "_", syear, "_", eyear, ".pdf")
-  tryCatch({
-    suppressMessages({ library(ggplot2); library(scales) })
-    plotMapCropCalendars(fnDT = fnout, fnPDF = fnpdf)
-  }, error = function(e) warning("Plotting failed (DT already saved): ",
-                                 conditionMessage(e)))
+  tryCatch(
+    plotMapCropCalendars(fnDT = fnout, fnPDF = fnpdf),
+    error = function(e) warning("Plotting failed (DT already saved): ",
+                                conditionMessage(e))
+  )
 }
 
 endtime <- Sys.time()

@@ -273,13 +273,12 @@ utils/ggcmi_ph3/01_calc_crop_calendars.R
   (kept working only because `00_config.R` still loads `grid_df`). Stage 03 should also gap-fill
   the one LPJmL cell the climate lacks (currently NA in the `.clm`).
 
-- **`plotMap_ggplot` namespacing/bugs.** Relies on `ggplot2` and `scales` being *attached*
-  (calls `map_data`, `ggplot`, `aes`, `geom_*`, `squish`, … unqualified) — it fails with
-  "could not find function 'map_data'" when only the package namespace is loaded. Also has a
-  typo `fil = landFill` (should be `fill =`) and deprecated `aes_string`/`size`. Proper fix:
-  add `@importFrom` (ggplot2/scales) or qualify the calls, fix the typo, modernise. For now
-  `01b` attaches ggplot2/scales and wraps the plot call in `tryCatch` (best-effort; the DT is
-  saved first), so plotting never fails the job.
+- **(FIXED) `plotMap_ggplot` / `plotMapCropCalendars` namespacing + bugs.** Now qualify all
+  external calls (`ggplot2::*`, `scales::squish`, `RColorBrewer::brewer.pal`,
+  `ggplot2::facet_grid`), fixed the `fil = landFill` typo (→ `fill =`), and modernised
+  `aes_string`→`aes(.data[[…]])` and `size`→`linewidth`. `scales`/`RColorBrewer` added to
+  DESCRIPTION Suggests. Verified by rendering a full DT to PDF. `01b` still wraps the plot call
+  in `tryCatch` (best-effort; the DT is saved first), but no longer needs to attach packages.
 
 
 - **Remove hidden global dependencies from the package functions.**

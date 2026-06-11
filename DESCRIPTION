@@ -12,7 +12,9 @@ Imports:
     data.table
 Suggests:
     zoo,
-    ggplot2
+    ggplot2,
+    scales,
+    RColorBrewer
 License: GPL-3
 Encoding: UTF-8
 LazyData: true

@@ -19,6 +19,12 @@
 
 ### Bug fixes
 
+- **`plotMap_ggplot` / `plotMapCropCalendars`**: qualify all external functions
+  (`ggplot2::`, `scales::squish`, `RColorBrewer::brewer.pal`) so plotting works without those
+  packages being attached; fix the `fil = landFill` typo (was a silently-ignored fill colour),
+  and replace deprecated `aes_string`/`size` with `aes(.data[[…]])`/`linewidth`. `scales` and
+  `RColorBrewer` added to Suggests.
+
 - **`calcMonthlyClimate`**: floor the monthly P/PET (`mppet`) denominator with
   `pmax(mpet_y, 1e-6)`, mirroring the daily `dppet`. FAO-56 PET can be clamped to 0 in deep
   cold; a month with zero PET (and, with zero precipitation, `0/0`) produced `Inf`/`NaN` in
