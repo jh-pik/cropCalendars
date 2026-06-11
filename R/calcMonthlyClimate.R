@@ -73,76 +73,42 @@ calcMonthlyClimate <- function(lat        = NULL,
 
   pet_method <- match.arg(pet_method)
 
-  years   <- syear:eyear
-  nyears  <- length(years)
-  nmonths <- 12
-
-  if (incl_feb29 == FALSE) {
-    dates <- createDateSeq(nstep = 365, years = years)
-
-  } else {
-    dates <- seqDates(start_date = paste0(syear, "-01-01"),
-                      end_date   = paste0(eyear, "-12-31"),
-                      step       = "day")
-  }
-  y_dates <- date_to_year(dates)
-  m_dates <- date_to_month(dates)
-  d_dates <- date_to_doy(dates, skip_feb29 = TRUE)
-
-  # Compute daily PET
   if (pet_method == "fao56") {
-
-    required <- list(windspeed = windspeed, humid = humid,
-                     swdown = swdown, lwdown = lwdown)
-    missing_vars <- names(which(sapply(required, is.null)))
-    if (length(missing_vars) > 0)
-      stop("pet_method = 'fao56' requires: ", paste(missing_vars, collapse = ", "))
-
-    pet <- calcPET_FAO56(temp, windspeed, humid, swdown, lwdown, ps)
-
-  } else {
-
-    if (!is.null(swdown) && !is.null(lwdown)) {
-      pet <- calcPET(temp, lat, d_dates, swdown = swdown, lwdown = lwdown)
-    } else {
-      pet <- mapply(calcPET, temp = temp, lat = lat, day = d_dates)
-    }
-
+    miss <- names(which(sapply(
+      list(windspeed = windspeed, humid = humid, swdown = swdown, lwdown = lwdown),
+      is.null)))
+    if (length(miss) > 0)
+      stop("pet_method = 'fao56' requires: ", paste(miss, collapse = ", "))
   }
 
-  # Aggregate to monthly climate for each year
-  ym      <- list(y_dates, m_dates)
-  mtemp_y <- tapply(temp, ym, mean)
-  mprec_y <- tapply(prec, ym, sum)
-  mpet_y  <- tapply(pet,  ym, sum)
-  # Floor monthly PET like the daily P/PET (see dppet below): FAO-56 PET can be
-  # clamped to 0 in deep cold, and a month with pet_sum == 0 would give Inf or
-  # (with prec_sum == 0) NaN, which propagates to mppet and breaks downstream
-  # rules (e.g. calcHarvestDateVector's min(monthly_ppet)).
-  mppet_y <- mprec_y / pmax(mpet_y, 1e-6)
+  # Accumulate the monthly climate one year at a time via the shared, cell-vectorised
+  # engine (initMonthlyClimate / addYearMonthlyClimate / finalizeMonthlyClimate). This
+  # is a single grid cell, so the gridded pipeline (01a) and this per-pixel function
+  # share one implementation of the aggregation, PET switch and DOY handling.
+  if (incl_feb29) {
+    dates <- seqDates(start_date = paste0(syear, "-01-01"),
+                      end_date   = paste0(eyear, "-12-31"), step = "day")
+  } else {
+    dates <- createDateSeq(nstep = 365, years = syear:eyear)
+  }
+  yr <- date_to_year(dates)
 
-  mtemp      <- round(apply(mtemp_y, 2, mean), digits = 5)
-  mprec      <- round(apply(mprec_y, 2, mean), digits = 5)
-  mpet       <- round(apply(mpet_y,  2, mean), digits = 5)
-  mppet      <- round(apply(mppet_y, 2, mean), digits = 5)
-  mppet_diff <- mppet - c(mppet[-1], mppet[1])
+  acc <- initMonthlyClimate(ncells = 1L, pet_method = pet_method)
+  for (y in unique(yr)) {
+    sel <- which(yr == y)
+    sub <- function(x) if (is.null(x)) NULL else x[sel]
+    acc <- addYearMonthlyClimate(
+      acc, temp = temp[sel], prec = prec[sel], dates = dates[sel],
+      swdown = sub(swdown), lwdown = sub(lwdown),
+      windspeed = sub(windspeed), humid = sub(humid),
+      ps  = if (length(ps) > 1L) ps[sel] else ps,
+      lat = lat
+    )
+  }
 
-  names(mtemp) <- names(mprec) <- c("month" = seq_len(12))
-  names(mpet)  <- names(mppet) <- c("month" = seq_len(12))
-  names(mppet_diff) <- c("month" = seq_len(12))
-
-  # Climatological daily arrays (365 values, one per DOY, averaged across years)
-  ppet_daily <- prec / pmax(pet, 1e-6)
-  dtemp <- as.vector(tapply(temp,       d_dates, mean))
-  dppet <- as.vector(tapply(ppet_daily, d_dates, mean))
-
-  return(list(mtemp      = mtemp,
-              mprec      = mprec,
-              mpet       = mpet,
-              mppet      = mppet,
-              mppet_diff = mppet_diff,
-              dtemp      = dtemp,
-              dppet      = dppet
-              )
-         )
+  mclm <- finalizeMonthlyClimate(acc)
+  for (f in c("mtemp", "mprec", "mpet", "mppet", "mppet_diff")) {
+    names(mclm[[f]]) <- seq_len(12)
+  }
+  mclm
 }

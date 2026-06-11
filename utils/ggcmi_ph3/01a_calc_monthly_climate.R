@@ -136,14 +136,14 @@ read_year_cells <- function(fnames, yr, conv = identity) {
 }
 
 # ------------------------------------ #
-# Accumulators (NCELLS rows). Monthly: sum over years of the per-year monthly
-# statistic (mean temp / sum prec / sum pet / sum-ratio ppet). DOY: per-DOY sum and
-# count across all days of all years, so DTEMP/DPPET = sum/count == tapply(.,mean).
-M_tas  <- M_pr <- M_pet <- M_ppet <- matrix(0, NCELLS, 12)
-D_tsum <- D_psum <- matrix(0, NCELLS, 365)
-D_cnt  <- numeric(365)
-valid  <- rep(TRUE, NCELLS)
-cell_lin <- NULL # lon-major linear index of the land cells into the [720,360] grid
+# Cell-vectorised monthly-climate accumulator, shared with calcMonthlyClimate
+# (init / addYear / finalize). Switch the PET method here: "fao56" (Penman-Monteith,
+# 7 vars) or "pt" (Priestley-Taylor; uses radiation when supplied). The algorithm
+# fixes and stages 02/03 assume "fao56".
+pet_method <- "fao56"
+acc        <- initMonthlyClimate(NCELLS, pet_method = pet_method)
+valid      <- rep(TRUE, NCELLS)  # cells with any NA in tas/pr are dropped at the end
+cell_lin   <- NULL               # lon-major index of land cells into the [720,360] grid
 
 cat("Streaming", nyears, "years (PET vectorised over", NCELLS, "cells)...\n")
 for (yr in years) {
@@ -156,70 +156,35 @@ for (yr in years) {
   huss    <- read_year_cells(clm_file_list[["huss"]],    yr)
   sfcwind <- read_year_cells(clm_file_list[["sfcwind"]], yr)
   ps      <- read_year_cells(clm_file_list[["ps"]],      yr)
-  nd      <- ncol(tas)
-
-  # FAO-56 PET, vectorised over all cells x days at once (calcPET_FAO56 is elementwise)
-  pet  <- calcPET_FAO56(tas, sfcwind, huss, rsds, rlds, ps)
-  ppet <- pr / pmax(pet, 1e-6)
-  # Only tas/pr/pet/ppet feed the accumulation below; free the PET-only inputs now.
-  rm(rsds, rlds, huss, sfcwind, ps)
-
   # Pixel validity follows the original code: skip cells with any NA in tas or pr.
   valid <- valid & (rowSums(is.na(tas)) == 0) & (rowSums(is.na(pr)) == 0)
 
-  # Month / DOY labels for this year (same helpers calcMonthlyClimate uses)
+  # Accumulate this year into the shared engine (computes PET, monthly & DOY stats).
   dts <- seqDates(paste0(yr, "-01-01"), paste0(yr, "-12-31"), "day")
-  mon <- date_to_month(dts)
-  doy <- date_to_doy(dts, skip_feb29 = TRUE)
+  acc <- addYearMonthlyClimate(
+    acc, temp = tas, prec = pr, dates = dts,
+    swdown = rsds, lwdown = rlds, windspeed = sfcwind, humid = huss, ps = ps,
+    lat = grid_df$lat
+  )
 
-  # Monthly accumulation (per-year statistic, summed across years; /nyears at the end)
-  for (m in 1:12) {
-    dom     <- which(mon == m)
-    pr_mon  <- rowSums(pr[,  dom, drop = FALSE])
-    pet_mon <- rowSums(pet[, dom, drop = FALSE])
-    M_tas[,  m] <- M_tas[,  m] + rowMeans(tas[, dom, drop = FALSE])
-    M_pr[,   m] <- M_pr[,   m] + pr_mon
-    M_pet[,  m] <- M_pet[,  m] + pet_mon
-    # Floor monthly PET (matches calcMonthlyClimate): avoids 0/0 = NaN / x/0 = Inf
-    # for zero-PET months in deep cold, which would propagate into mppet.
-    M_ppet[, m] <- M_ppet[, m] + pr_mon / pmax(pet_mon, 1e-6)
-  }
-
-  # DOY accumulation: add each day to its DOY column (a DOY can recur within a leap
-  # year, e.g. DOY 28), and count per DOY -> exact tapply(., DOY, mean) replication.
-  for (k in seq_len(nd)) {
-    d <- doy[k]
-    D_tsum[, d] <- D_tsum[, d] + tas[, k]
-    D_psum[, d] <- D_psum[, d] + ppet[, k]
-  }
-  D_cnt <- D_cnt + tabulate(doy, nbins = 365)
-
-  rm(tas, pr, pet, ppet)
+  rm(tas, pr, rsds, rlds, huss, sfcwind, ps)
   gc(verbose = FALSE)
 }
 cat("\n")
 
 # ------------------------------------ #
-# Multi-year averages (rounding matches calcMonthlyClimate: monthly rounded to 5
-# digits, mppet_diff derived from the rounded mppet; daily fields not rounded).
-MTEMP      <- round(M_tas  / nyears, 5)
-MPREC      <- round(M_pr   / nyears, 5)
-MPET       <- round(M_pet  / nyears, 5)
-MPPET      <- round(M_ppet / nyears, 5)
-MPPET_DIFF <- MPPET - MPPET[, c(2:12, 1)]
-DTEMP      <- sweep(D_tsum, 2, D_cnt, "/")
-DPPET      <- sweep(D_psum, 2, D_cnt, "/")
-
-# Keep valid pixels only (same set the original per-pixel code would have produced)
+# Finalise via the shared engine, then keep only valid pixels (same set the original
+# per-pixel code would have produced).
+mclm <- finalizeMonthlyClimate(acc)
 keep <- which(valid)
 grid_clm   <- grid_df[keep, c("lon", "lat")]
-MTEMP      <- MTEMP[keep, , drop = FALSE]
-MPREC      <- MPREC[keep, , drop = FALSE]
-MPET       <- MPET[keep, , drop = FALSE]
-MPPET      <- MPPET[keep, , drop = FALSE]
-MPPET_DIFF <- MPPET_DIFF[keep, , drop = FALSE]
-DTEMP      <- DTEMP[keep, , drop = FALSE]
-DPPET      <- DPPET[keep, , drop = FALSE]
+MTEMP      <- mclm$mtemp[keep, , drop = FALSE]
+MPREC      <- mclm$mprec[keep, , drop = FALSE]
+MPET       <- mclm$mpet[keep, , drop = FALSE]
+MPPET      <- mclm$mppet[keep, , drop = FALSE]
+MPPET_DIFF <- mclm$mppet_diff[keep, , drop = FALSE]
+DTEMP      <- mclm$dtemp[keep, , drop = FALSE]
+DPPET      <- mclm$dppet[keep, , drop = FALSE]
 
 fnout <- paste0(clm_dir, "monthly_climate_", gcm, "_", scen, "_", syear, "_", eyear, ".Rdata")
 cat("\nSaving monthly-climate cache:\n", fnout, "\n")

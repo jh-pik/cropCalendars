@@ -20,8 +20,8 @@
 #' @export
 
 calcPET <- function(temp,
-                    lat,
-                    day,
+                    lat = NULL,
+                    day = NULL,
                     swdown = NULL,
                     lwdown = NULL
                     ) {
@@ -39,6 +39,11 @@ calcPET <- function(temp,
     eeq   <- pmax(0, s / (s + gamma_t) / lambda * Rn)
 
   } else {
+
+    # Orbital-geometry net radiation: needs latitude and day-of-year.
+    if (is.null(lat) || is.null(day)) {
+      stop("calcPET without swdown/lwdown needs 'lat' and 'day' (orbital Rn estimate).")
+    }
 
     ndays_year <- 365
     M_1_PI     <- 0.318309886183790671538

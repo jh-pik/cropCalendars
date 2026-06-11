@@ -2,6 +2,21 @@
 
 ## 0.2.0 (branch fix-alg-vectorize-phu)
 
+### Changes
+
+- **Cell-vectorised, streaming monthly-climate engine** (`initMonthlyClimate` /
+  `addYearMonthlyClimate` / `finalizeMonthlyClimate`, new `R/monthlyClimateAccum.R`).
+  Years are added one at a time, vectorised over an arbitrary number of grid cells, so the
+  gridded pipeline can process the full grid one year at a time without the full multi-year
+  series in memory. `calcMonthlyClimate` is now a thin per-pixel wrapper over this engine, so
+  the aggregation, PET-method switch, P/PET flooring and leap-year DOY handling live in one
+  place (previously duplicated in the pipeline). Output is unchanged (verified bit-identical
+  to the previous gridded results); monthly-vector names retained.
+
+- **`calcPET`**: `lat` and `day` are now optional — they are only needed for the orbital
+  net-radiation estimate. With `swdown`/`lwdown` supplied (observed Rn), PET no longer
+  depends on latitude/day-of-year.
+
 ### Bug fixes
 
 - **`calcMonthlyClimate`**: floor the monthly P/PET (`mppet`) denominator with
