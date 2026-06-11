@@ -77,7 +77,9 @@ Stages (run in order):
 | Stage | Script | Does | Needs |
 |---|---|---|---|
 | config | `00_config.R` | sourced by 01–03; reads `settings.sh`, crop lists, grid | R + package |
-| 1 | `01_calc_crop_calendars.{R,sh}` | crop calendars per GCM×scenario×crop×year → `DT/*.Rdata` | R + package |
+| 1a | `01a_calc_monthly_climate.{R,sh}` | cache crop-independent monthly climate per GCM×scenario×window | R + package |
+| 1b | `01b_calc_crop_calendars.{R,sh}` | crop calendars per crop from the 1a cache → `DT/*.Rdata` | R + package |
+| 1 (legacy) | `01_calc_crop_calendars.{R,sh}` | fused single-step version of 1a+1b (recomputes climate per crop; kept for reference) | R + package |
 | 2 | `02_generate_crop_cal_timeseries.{R,sh}` | assemble time series → NetCDF | R + package, AgMIP ref. |
 | 3 | `03_calc_phu_for_lpjml.{R,sh}` | PHUs for LPJmL → NetCDF | R + package, `.clm` climate |
 | 4 | `04_move_and_rename.sh` | rename to ISIMIP3b DRS layout | **NCO** (`ncrename`) |
