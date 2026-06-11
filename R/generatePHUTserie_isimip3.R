@@ -101,10 +101,10 @@ generatePHUTserie_isimip3 <- function(
       # Test if it is winter crop ----
       if (crop_ls[["vernal"]][cr] == "yes") {
 
-        wcrop <- wintercrop(start =   sdate.avg,
-                            end   =   hdate.avg,
-                            tcm   =  min(mtemp),
-                            lat   = grid$lat[i])
+        wcrop <- isWinterCrop(start =   sdate.avg,
+                              end   =   hdate.avg,
+                              tcm   =  min(mtemp),
+                              lat   = grid_df$lat[i])
       } else {
 
         wcrop <- 0
@@ -116,24 +116,24 @@ generatePHUTserie_isimip3 <- function(
       if (crop_ls[["vernal"]][cr] == "yes_all" | wcrop == 1) {
 
         # Calculate Vernalization Requirements ----
-        vd <- calc.vd(temp_mean_month  =         mtemp,
-                      max.vern.days    = max.vern.days,
-                      max.vern.months  =             5,
-                      tv2              =           tv2,
-                      tv3              =           tv3)
+        vd <- calcVd(temp_mean_month  =         mtemp,
+                     max.vern.days    = max.vern.days,
+                     max.vern.months  =             5,
+                     tv2              =           tv2,
+                     tv3              =           tv3)
 
         # Calculate Vernalization Reduction Factors ----
-        vrf <- calc.vrf(sdate           =     sdate.avg,
-                        hdate           =     hdate.avg,
-                        mdt             =         dtemp,
-                        vd              =            vd,
-                        vd_b            =           0.2,
-                        max.vern.days   = max.vern.days,
-                        max.vern.months =             5,
-                        tv1             =           tv1,
-                        tv2             =           tv2,
-                        tv3             =           tv3,
-                        tv4             =           tv4)
+        vrf <- calcVrf(sdate           =     sdate.avg,
+                       hdate           =     hdate.avg,
+                       mdt             =         dtemp,
+                       vd              =            vd,
+                       vd_b            =           0.2,
+                       max.vern.days   = max.vern.days,
+                       max.vern.months =             5,
+                       tv1             =           tv1,
+                       tv2             =           tv2,
+                       tv3             =           tv3,
+                       tv4             =           tv4)
       } else {
 
         vrf <- rep(1, 365)
