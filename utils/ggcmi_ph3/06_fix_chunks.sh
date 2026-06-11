@@ -1,15 +1,13 @@
 #!/bin/bash
 
-#module purge
-#module load nco cdo/1.9.5-gcc64 netcdf_c/4.3.2-gcc48
-#module load nco/5.1.0 cdo/1.9.10/gnu netcdf-c/4.9.0/gnu/10.2
-source rhel8_stack
-module load nco/5.1.9-spack
-module load cdo/2.4.0-spack
+# Toolchain modules (nco + cdo) — single source of truth, see env.sh
+source "$(dirname "$(readlink -f "$0")")/env.sh"
+load_nco_cdo_env
 
 
-#BASE_DIR_ROOT=/p/projects/macmit/users/minoli/PROJECTS/GGCMI_ph3_adaptation/ISIMIP3bv2/crop_calendars/ncdf
-BASE_DIR_ROOT=/p/projects/macmit/data/GGCMI/phase3/GGCMI_ph3_adaptation_cropping_calendars/ISIMIP3b/InputData/socioeconomic/crop_calendar  #/home/delvalle/data/ISIMIP3a/InputData/socioeconomic/crop_calendar
+# Deployment settings (PUBLISH_DIR, ...) — see settings.sh
+source "$(dirname "$(readlink -f "$0")")/settings.sh"
+BASE_DIR_ROOT=$PUBLISH_DIR
 
 # --fix_rec_dmn $VAR $FILE $FILE.tmp
 GCMS="GFDL-ESM4 IPSL-CM6A-LR MPI-ESM1-2-HR MRI-ESM2-0 UKESM1-0-LL"

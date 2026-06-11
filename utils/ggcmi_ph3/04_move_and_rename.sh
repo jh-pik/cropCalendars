@@ -1,13 +1,13 @@
 #!/bin/bash
 
-#module purge
-#module load nco cdo/1.9.5-gcc64 netcdf_c/4.3.2-gcc48
-source rhel8_stack
-module load nco/5.1.9-spack
-module load cdo/2.4.0-spack  
+# Toolchain modules (nco + cdo) — single source of truth, see env.sh
+source "$(dirname "$(readlink -f "$0")")/env.sh"
+load_nco_cdo_env
 
-BASE_DIR_ROOT=/p/projects/macmit/data/GGCMI/phase3/GGCMI_ph3_adaptation_cropping_calendars/crop_calendars/ncdf
-BASE_DIR_OUT=/p/projects/macmit/data/GGCMI/phase3/GGCMI_ph3_adaptation_cropping_calendars/ISIMIP3b/InputData/socioeconomic/crop_calendar  #/home/delvalle/data/ISIMIP3a/InputData/socioeconomic/crop_calendar
+# Deployment settings (OUTPUT_DIR, NCDF_DIR, PUBLISH_DIR, ...) — see settings.sh
+source "$(dirname "$(readlink -f "$0")")/settings.sh"
+BASE_DIR_ROOT=$NCDF_DIR
+BASE_DIR_OUT=$PUBLISH_DIR
 
 #for PERIOD in $periods; do
 BASE_DIR=$BASE_DIR_ROOT #/$PERIOD

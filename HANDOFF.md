@@ -1,0 +1,271 @@
+# Crop Calendar Pipeline — Deployment Hand-off
+
+## Context
+
+The `cropCalendars` R package was substantially revised on branch `fix-alg-vectorize-phu`
+during development at `/p/projects/landuse/LPJmL_for_MAgPIE/cropCalendars/`. The whole
+package + pipeline has since been **moved to its deployment home**:
+
+```
+/p/projects/macmit/users/heinke/crop_calendars/cropCalendars/
+```
+
+The remaining tasks are to **fix the hardcoded paths in the pipeline scripts**, install the
+revised package, and run a test case (GFDL-ESM4 historical) end-to-end before deploying.
+
+---
+
+## What Was Changed in the Package (branch `fix-alg-vectorize-phu`)
+
+All changes are committed; `git log --oneline` shows:
+
+```
+e1ef691  Vectorize generatePHUTserie_isimip3: replace cell loop with matrix ops
+8cbb7bb  Fix namespace errors in generatePHUTserie_isimip3
+a84770f  Optimize memory and runtime in PET calculation and pipeline script
+174574a  01_calc_crop_calendars: read rsds, rlds, huss, sfcwind, ps; use FAO-56 PET
+fa81e49  Use actual daily data for wet-season and threshold-crossing DOYs
+5518588  calcPET_FAO56: remove tmax/tmin, use tas directly
+1e1381f  calcPET_FAO56: use 24 h fluxes for LW and aerodynamic term
+26ad35f  Improve PET: observed Rn in calcPET, add FAO-56 option
+```
+
+### Algorithm fixes
+
+| Function | What changed |
+|---|---|
+| `calcPET_FAO56` | Removed `tmax`/`tmin`; uses daily mean `tas` + specific humidity `huss`; FAO-56 Penman-Monteith |
+| `calcPET` | Added observed-Rn branch (when `swdown`/`lwdown` supplied); `pmax` for vectorization |
+| `calcDoyWetMonth` | Now takes 365-value daily P/PET climatology; 120-day circular rolling window (eliminates up to 351-day interpolation errors) |
+| `calcDoyCrossThreshold` | Now takes 365-value daily temperature; circular Dec→Jan wrap via `c(x[365], x[1:364])` |
+| `calcMonthlyClimate` | FAO-56 PET path vectorized; returns `dtemp` and `dppet` (daily DOY climatologies) |
+| `calcSowingDate` | Signature updated: `daily_ppet`, `daily_temp` replace monthly equivalents |
+| `calcCropCalendars` | Passes `dtemp`/`dppet` from `calcMonthlyClimate` to `calcSowingDate` |
+| `generatePHUTserie_isimip3` | Fully vectorized: `lin_idx` mapping, year-by-year climate accumulation, matrix PHU ops |
+
+### New pipeline inputs (01_calc_crop_calendars.R)
+
+Script now reads 7 climate variables per pixel: `tas`, `pr`, `rsds`, `rlds`, `huss`,
+`sfcwind`, `ps` and passes them to `calcMonthlyClimate(pet_method="fao56", ...)`.
+
+---
+
+## Two Pipelines — Do Not Confuse Them
+
+| | Package-based pipeline | Standalone pipeline |
+|---|---|---|
+| Location | `cropCalendars/utils/ggcmi_ph3/` | `crop_calendars/compute_sdate_hdate/` + `compute_phu/` |
+| Uses package | Yes — `library(cropCalendars)` | No — sources own functions |
+| Has algorithm fixes | YES — this is what was revised | No — separate older code |
+| Deploy for | Production with revised algorithms | Separate project (ISIMIP3bv2) |
+
+**We want the package-based pipeline.**
+
+---
+
+## Deployment Plan
+
+### 1. Deployment directory — already in place
+
+The package and its pipeline scripts have already been moved here. No copy step is needed:
+```
+Package repo:  /p/projects/macmit/users/heinke/crop_calendars/cropCalendars/
+Pipeline dir:  /p/projects/macmit/users/heinke/crop_calendars/cropCalendars/utils/ggcmi_ph3/
+```
+Below, `<deployment_dir>` means the pipeline dir above.
+
+### 2. Paths — now centralized in `settings.sh` (DONE)
+
+Deployment paths and the SLURM account are no longer hardcoded in each script. They
+live in a single file, **`utils/ggcmi_ph3/settings.sh`** (plain `KEY=VALUE`), which the
+`.sh` job scripts `source` and `00_config.R` parses. **To move this pipeline again, edit
+only `settings.sh`.**
+
+Current values:
+
+| Key | Value | Notes |
+|---|---|---|
+| `WD` | `…/heinke/crop_calendars/cropCalendars/utils/ggcmi_ph3` | pipeline dir (no trailing slash) |
+| `ACCOUNT` | `landuse` | SLURM `-A`; `heinke` is **not** in `macmit`, so the old `-A macmit` was rejected. Available: `isimiplp` (default), `landuse`, `lpjml`, `magpie`, … (`sacctmgr -nP show assoc user=$USER format=Account`) |
+| `OUTPUT_DIR` | `/p/projects/macmit/data/GGCMI/phase3/GGCMI_ph3_adaptation_cropping_calendars/` | write target; group-writable, heinke can write |
+| `CLIMATE_DIR` | `/p/projects/macmit/data/GGCMI/phase3/input_land_only_v2/` | read-only input |
+| `ISIMIP3B_PATH` | `/p/projects/lpjml/input/scenarios/ISIMIP3bv2/` | `.clm` climate for PHU step |
+| `AGMIP_DIR` | `/p/projects/macmit/data/GGCMI/AgMIP.input/phase3/crop_calendar/` | AgMIP reference cal., read-only; `02` sets `ggdir`, read as a global by `generateCropCalTSerie_isimip3()` |
+| `NCDF_DIR` | `${OUTPUT_DIR}crop_calendars/ncdf` | derived; ncdf tree from step 2/3 (source for `04`) |
+| `PUBLISH_DIR` | `${OUTPUT_DIR}ISIMIP3b/InputData/socioeconomic/crop_calendar` | derived; published ISIMIP3b tree (`04` writes it; `05/06/07` fix it) |
+
+How it wires together:
+- `00_config.R` parses `settings.sh` → `output_dir`, `climate_dir`, `isimip3b.path`, `agmip_dir`.
+- `01/02/03_*.R` use `work_dir <- getwd()` (sbatch passes `--chdir=$WD`; run interactively
+  from the dir) — no path strings in the R files anymore. `02` uses `ggdir <- agmip_dir`.
+- `01/02/03_*.sh` `source settings.sh` → `$WD` / `-A ${ACCOUNT}`.
+- `04_move_and_rename.sh` `source settings.sh` → `BASE_DIR_ROOT=$NCDF_DIR`, `BASE_DIR_OUT=$PUBLISH_DIR`.
+- `05/06/07_*.sh` `source settings.sh` → `BASE_DIR_ROOT=$PUBLISH_DIR`.
+
+Toolchain modules are centralized in **`env.sh`** (separate from `settings.sh`):
+`load_r_env` (piam → R 4.3.2 + packages) for `01/02/03_*.sh`, and `load_nco_cdo_env`
+(`module load nco`/`cdo`) for `04–07`. piam does not provide nco/cdo, so they stay
+separate. Each `.sh` sources `env.sh` and calls the relevant function.
+
+`NCDF_DIR`/`PUBLISH_DIR` use bash expansion of `OUTPUT_DIR`; they are only read by the
+`.sh` scripts. The R parser ignores them (it reads only the four literal keys above), so
+keep the R-consumed keys as literal paths.
+
+Note: `02`'s `ggdir <- agmip_dir` is **required** — `generateCropCalTSerie_isimip3()`
+(R/generateCropCalTSerie_isimip3.R:56) reads `ggdir` as a free/global variable, not as a
+function argument. Same global-injection pattern as `generatePHUTserie_isimip3`. Do not delete.
+
+### 3. Install the package
+
+The pipeline scripts call `library(cropCalendars)`. The repo is already on branch
+`fix-alg-vectorize-phu`, so install the working tree directly:
+
+```r
+devtools::install("/p/projects/macmit/users/heinke/crop_calendars/cropCalendars")
+```
+
+Or build and install as a tarball if devtools is not available on the cluster nodes:
+```bash
+R CMD build /p/projects/macmit/users/heinke/crop_calendars/cropCalendars
+R CMD INSTALL cropCalendars_*.tar.gz
+```
+
+Verify after install:
+```r
+library(cropCalendars)
+packageVersion("cropCalendars")
+# Check key functions exist
+exists("calcPET_FAO56")
+exists("calcDoyWetMonth")
+```
+
+### 4. Create output directory structure
+
+`01_calc_crop_calendars.R` creates `dfout_dir` and `plot_dir` automatically, but the
+root `output_dir` must exist:
+```bash
+mkdir -p <output_dir>/crop_calendars/DT
+mkdir -p <output_dir>/crop_calendars/ncdf
+```
+
+### 5. Test run — GFDL-ESM4 historical, single crop, single year
+
+Before submitting the full grid, run one job interactively to verify:
+
+```bash
+cd <deployment_dir>
+Rscript --vanilla 01_calc_crop_calendars.R \
+  GFDL-ESM4 historical Maize 1991 1 1
+```
+
+Args: `GCM SC CROP YEAR NNODES NTASKS`  
+Year 1991 uses the 1961-1990 climate average (30-year window ending 1990).
+
+Check:
+- No R errors
+- Output file created: `<output_dir>/crop_calendars/DT/historical/GFDL-ESM4/DT_output_crop_calendars_Maize_GFDL-ESM4_historical_1961_1990.Rdata`
+- Sowing/harvest dates look spatially reasonable (not all NA, not all 1)
+
+### 6. Full test — GFDL-ESM4 historical
+
+Once single-crop test passes, submit the full historical run using the `.sh` scripts
+(update `gcms` and `scens` arrays to only `GFDL-ESM4` and `historical`):
+
+**Step 1** (`01_calc_crop_calendars.sh`):
+- One job per crop × year combination
+- Historical needs years: 1851, 1861, ..., 2011 (as in original config: `seq(1851, 2011, by=10)`)
+- ~7 crops × 17 years = ~119 jobs, each using 120 CPUs, runtime ~2 h
+
+**Step 2** (`02_generate_crop_cal_timeseries.sh`):
+- After step 1 completes
+- 15 crops × 2 irri = 30 jobs, ~15 min each
+
+**Step 3** (`03_calc_phu_for_lpjml.sh`):
+- After step 2 completes
+- 15 crops × 2 irri = 30 jobs, ~1 h each
+- Uses `generatePHUTserie_isimip3()` from the package (now vectorized)
+
+---
+
+## Key Technical Notes for the Next Session
+
+### SLURM `launch_failed_requeued_held`
+
+Jobs sometimes go to this state immediately after starting (node-side prolog failure).
+They will NOT restart on their own. Release with:
+```bash
+scontrol release $(squeue -u heinke --state=PD | awk 'NR>1 {print $1}')
+```
+Watch for jobs that go RUNNING → COMPLETING within seconds of starting — that is the
+failure, not normal completion.
+
+### Climate units (ISIMIP3b NetCDF)
+
+| Variable | Unit in file | Conversion needed |
+|---|---|---|
+| `tas` | K | subtract 273.15 → °C |
+| `pr` | kg/m²/s | multiply by 86400 → mm/day |
+| `rsds`, `rlds` | W/m² | none |
+| `huss` | kg/kg | none |
+| `sfcwind` | m/s at 10 m | none |
+| `ps` | Pa | none |
+
+These conversions are already in `01_calc_crop_calendars.R` (`k2deg()` and `×86400`).
+
+### FAO-56 PET requirement
+
+`calcMonthlyClimate(pet_method="fao56")` requires `rsds`, `rlds`, `huss`, `sfcwind`,
+`ps` in addition to `tas` and `pr`. All are read in `01_calc_crop_calendars.R`.
+The old `pet_method="pt"` (Priestley-Taylor) only needs `tas`/`pr` — do not revert.
+
+### `generatePHUTserie_isimip3` globals
+
+The function reads several variables from the calling script's environment:
+`grid_df`, `NCELLS`, `years`, `nyears`, `crop_ls`, `irri_ls`, `work_dir`, `LYs`,
+`isimip3b.path`. These are all set in `00_config.R` and `03_calc_phu_for_lpjml.R`.
+The vectorized implementation also uses `get.isimip.tas()` which reads from CLM binary
+files at `isimip3b.path` — not from the NetCDF climate input.
+
+### ncdf variable names
+
+The crop calendar ncdf files use `"plant-day"` and `"maty-day"` as variable names
+(with hyphens). `generatePHUTserie_isimip3` reads these correctly. Do not rename to
+`"planting_day"` / `"harvest_day"`.
+
+---
+
+## Files Changed in the Package (for reference)
+
+```
+R/calcPET_FAO56.R
+R/calcPET.R
+R/calcDoyWetMonth.R
+R/calcDoyCrossThreshold.R
+R/calcMonthlyClimate.R
+R/calcSowingDate.R
+R/calcCropCalendars.R
+R/generatePHUTserie_isimip3.R
+utils/ggcmi_ph3/01_calc_crop_calendars.R
+```
+
+---
+
+## What Has NOT Been Done Yet
+
+- ~~Path updates in the deployment copies of the pipeline scripts~~ DONE — centralized in `settings.sh` (step 2)
+- Package installation in the deployment environment
+- Validation of outputs against the old pipeline (expected: different sowing dates in wet/dry tropics due to 120-day rolling window fix; different PHU values for winter wheat/rapeseed due to corrected FAO-56 PET)
+- Running the full GCM × scenario matrix (5 GCMs × 5 scenarios) — do GFDL-ESM4 historical first
+
+---
+
+## Future cleanups (non-blocking)
+
+- **Remove hidden global dependencies from the package functions.**
+  `generateCropCalTSerie_isimip3()` reads `ggdir` as a free/global variable
+  (R/generateCropCalTSerie_isimip3.R:56), and `generatePHUTserie_isimip3()` likewise reads
+  `grid_df`, `NCELLS`, `years`, `nyears`, `crop_ls`, `irri_ls`, `work_dir`, `LYs`,
+  `isimip3b.path` from the caller's environment. Make these explicit function arguments and
+  pass them at the call sites in `02`/`03`. Removes the fragile "inject a global, then call"
+  pattern and makes the functions self-contained/testable. Deliberate package API change —
+  do after the GFDL-ESM4 test passes, not as part of the path refactor.

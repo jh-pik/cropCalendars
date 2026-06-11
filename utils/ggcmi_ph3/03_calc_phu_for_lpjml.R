@@ -13,10 +13,9 @@ print(starttime)
 
 # ------------------------------------ #
 # General settings
-work_dir <- setwd(paste(
-  "/p/projects/macmit/users/cmueller/repos/cropCalendars/utils/ggcmi_ph3/"
-))
-source(paste0(work_dir, "/00_config.R"))
+# Run from the pipeline dir: sbatch passes --chdir=$WD, interactive runs cd there.
+work_dir <- getwd()
+source(file.path(work_dir, "00_config.R"))
 
 makeplot <- TRUE
 NCELLS   <- 67420

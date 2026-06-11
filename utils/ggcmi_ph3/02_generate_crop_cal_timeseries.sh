@@ -2,8 +2,13 @@
 
 # Run time per job: 15 min
 
-# Working directory, where the .R file is stored
-wd=/p/projects/macmit/users/cmueller/repos/cropCalendars/utils/ggcmi_ph3
+# Deployment settings (WD, ACCOUNT, ...) — single source of truth, see settings.sh
+source "$(dirname "$(readlink -f "$0")")/settings.sh"
+wd=$WD
+
+# Toolchain modules (R + packages) — single source of truth, see env.sh
+source "$(dirname "$(readlink -f "$0")")/env.sh"
+load_r_env
 
 # GCM, scenario, crops, irrigations
 gcms=('GFDL-ESM4' 'IPSL-CM6A-LR' 'MPI-ESM1-2-HR' 'MRI-ESM2-0' 'UKESM1-0-LL')
@@ -24,7 +29,7 @@ for gc in "${!gcms[@]}";do
         echo "GCM: ${gcms[gc]} --- SCENARIO: ${scens[sc]} --- CROP: ${crops[cr]}"
         echo "------------------------------------------------------------------"
 
-sbatch --ntasks=1 --cpus-per-task=4 -J nc_${gc}_${sc}_${cr}_${ir} -A macmit \
+sbatch --ntasks=1 --cpus-per-task=4 -J nc_${gc}_${sc}_${cr}_${ir} -A ${ACCOUNT} \
 -t 01:00:00  --chdir=${wd} --qos=standby  \
 R -f 02_generate_crop_cal_timeseries.R \
 --args "${gcms[gc]}" "${scens[sc]}" "${crops[cr]}" "${irrigs[ir]}"

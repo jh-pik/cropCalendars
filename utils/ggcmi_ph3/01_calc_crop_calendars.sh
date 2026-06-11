@@ -2,8 +2,13 @@
 
 # Bash script for calculating crop calendars for GGCMI phase3 (ISIMIP3b climate)
 
-# Working directory, where the .R file is stored
-wd=/p/projects/macmit/users/cmueller/repos/cropCalendars/utils/ggcmi_ph3
+# Deployment settings (WD, ACCOUNT, ...) — single source of truth, see settings.sh
+source "$(dirname "$(readlink -f "$0")")/settings.sh"
+wd=$WD
+
+# Toolchain modules (R + packages) — single source of truth, see env.sh
+source "$(dirname "$(readlink -f "$0")")/env.sh"
+load_r_env
 
 # GCM, scenario, crops
 # gcms=('GFDL-ESM4' 'IPSL-CM6A-LR' 'MPI-ESM1-2-HR' 'MRI-ESM2-0' 'UKESM1-0-LL')
@@ -43,7 +48,7 @@ echo "GCM: ${gcms[gc]} --- SCENARIO: ${scens[sc]} --- CROP: ${crops[cr]} YEARS: 
 
 # Submit job to SLURM - for arguments, see https://slurm.schedmd.com/sbatch.html
 sbatch --nodes=${nnodes} --ntasks-per-node=${ntasks} --exclusive \
--t 02:00:00 -J crop_cal -A macmit --chdir=${wd} --qos=standby \
+-t 02:00:00 -J crop_cal -A ${ACCOUNT} --chdir=${wd} --qos=standby \
 R -f 01_calc_crop_calendars.R \
 --args "${gcms[gc]}" "${scens[sc]}" "${crops[cr]}" "${years[yy]}" \
 "${nnodes}" "${ntasks}"

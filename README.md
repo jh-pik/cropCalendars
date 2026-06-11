@@ -33,6 +33,104 @@ crop_calendars <- calcCropCalendars()
 phenological_heat_units <- calcPHU()
 ```
 
+## What is portable, and what is not
+
+This repository has **two layers**:
+
+1. **The R package (`R/`, portable).** The core algorithm functions
+   (`calcMonthlyClimate`, `calcCropCalendars`, `calcSowingDate`, `calcHarvestDate`,
+   `calcPHU`, `calcPET` / `calcPET_FAO56`, …) are plain R that operate on in-memory
+   vectors / data frames. Default crop parameters ship inside the package
+   (`inst/extdata/crop_parameters.csv`, read via `system.file`). The only hard
+   dependencies are CRAN packages (`ncdf4`, `data.table`). This layer runs on **any**
+   machine with R — no cluster, scheduler, or fixed data paths required.
+
+2. **The GGCMI / ISIMIP3b pipeline (`utils/ggcmi_ph3/`, PIK-specific).** A set of
+   driver scripts that run the package over the global grid for the GGCMI phase-3
+   protocol. This layer is tied to the PIK cluster (SLURM, environment modules) and to a
+   fixed input-data layout. See below for how to run it, and what to change to run it
+   elsewhere.
+
+### Using just the package
+
+```r
+library(cropCalendars)
+
+# Per-pixel daily/monthly climate -> crop calendar -> phenological heat units.
+# Feed your own climate series (tas, pr, and for FAO-56 PET also rsds, rlds,
+# huss, sfcwind, ps) as plain R objects; no files or paths are required.
+clim <- calcMonthlyClimate(lat = lat, mtemp = tas, mprec = pr, ...)
+ccal <- calcCropCalendars(lon = lon, lat = lat, ...)
+phu  <- calcPHU(sdate = ccal$sdate, hdate = ccal$hdate, ...)
+```
+
+`?calcCropCalendars`, `?calcMonthlyClimate`, `?calcPHU` document the expected inputs.
+
+## Running the GGCMI / ISIMIP3b pipeline
+
+Scripts live in `utils/ggcmi_ph3/`. All deployment-specific values (paths, SLURM
+account, derived output trees) are centralized in **`settings.sh`** — edit that one file
+when moving the pipeline; the `.sh` jobs `source` it and `00_config.R` parses it.
+
+Stages (run in order):
+
+| Stage | Script | Does | Needs |
+|---|---|---|---|
+| config | `00_config.R` | sourced by 01–03; reads `settings.sh`, crop lists, grid | R + package |
+| 1 | `01_calc_crop_calendars.{R,sh}` | crop calendars per GCM×scenario×crop×year → `DT/*.Rdata` | R + package |
+| 2 | `02_generate_crop_cal_timeseries.{R,sh}` | assemble time series → NetCDF | R + package, AgMIP ref. |
+| 3 | `03_calc_phu_for_lpjml.{R,sh}` | PHUs for LPJmL → NetCDF | R + package, `.clm` climate |
+| 4 | `04_move_and_rename.sh` | rename to ISIMIP3b DRS layout | **NCO** (`ncrename`) |
+| 5–7 | `05_fix_missval.sh`, `06_fix_chunks.sh`, `07_fix_timeaxis.sh` | fix `missing_value`, chunking, time axis | **NCO / CDO** |
+
+The R driver scripts (01–03) are submitted with `sbatch` via the matching `.sh`, but the
+`.R` files themselves run standalone — a single test case can be run directly:
+
+```bash
+cd utils/ggcmi_ph3
+Rscript --vanilla 01_calc_crop_calendars.R GFDL-ESM4 historical Maize 1991 1 1
+# Args: GCM SCENARIO CROP YEAR NNODES NTASKS  (run from this dir; work_dir = getwd())
+```
+
+Beyond the package, the pipeline R scripts also use: `devtools`, `abind`, `foreach`,
+`pryr`, `zoo`. NetCDF post-processing (stages 4–7) requires the **NCO** and **CDO**
+command-line tools on `PATH`.
+
+Toolchain setup is centralized in **`env.sh`**, which defines two functions:
+`load_r_env` (R + packages; stages 01–03) and `load_nco_cdo_env` (NCO + CDO; stages
+04–07). Each `.sh` sources `env.sh` and calls the one it needs. On the PIK cluster these
+are two separate module sets — R comes from the `piam` module set, which does **not**
+include `nco`/`cdo`, so those are loaded separately. To run elsewhere, edit the two
+function bodies.
+
+## Running outside the PIK cluster
+
+The package layer needs nothing special. The **pipeline** assumes a PIK environment in a
+few concrete places — to run it elsewhere, replace each:
+
+- **Job scheduler.** `01/02/03_*.sh` submit with `sbatch` (`-A $ACCOUNT`, `--qos=standby`,
+  `--chdir`). Without SLURM, run the `.R` files directly with `Rscript` (see above), or
+  adapt the wrappers to your scheduler. Stages 4–7 are plain bash loops (no scheduler).
+- **Environment modules.** Toolchain loading lives in `env.sh` (`load_r_env` /
+  `load_nco_cdo_env`). Off-cluster, replace the function bodies with however you provide
+  R and NCO/CDO (e.g. conda: `conda install -c conda-forge nco cdo`), or empty them if the
+  tools are already on `PATH`.
+- **Input datasets**, currently expected at the paths in `settings.sh` / `00_config.R`:
+  - `CLIMATE_DIR` — ISIMIP3b daily climate NetCDF (`tas`, `pr`, `rsds`, `rlds`, `huss`,
+    `sfcwind`, `ps`).
+  - `ISIMIP3B_PATH` — ISIMIP3b `.clm` binary climate, read by `get.isimip.tas()` in the
+    PHU stage. This reader assumes the LPJmL `.clm` format and file naming.
+  - `AGMIP_DIR` — AgMIP reference crop calendars (NetCDF), used by stage 2.
+  - **LPJmL `grid.bin`** — still hardcoded in `00_config.R` (`readGridLPJmL` default
+    `fname`, and `ncells = 67420` for the 0.5° global land grid). Point this at your grid
+    or replace `grid_df` with your own `lon`/`lat` table.
+- **Grid / resolution.** Stage 6 hardcodes `lat/360, lon/720` (0.5° global). Change for a
+  different grid.
+
+In short: the **science** is portable (the package); the **GGCMI driver** is an
+ISIMIP3b/PIK harness that you re-point via `settings.sh` plus the data-layout assumptions
+listed above.
+
 ## Contact
 
 - Sara Minoli (sara.minoli@pik-potsdam.de)

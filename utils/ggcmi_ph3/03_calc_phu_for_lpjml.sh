@@ -2,7 +2,13 @@
 
 # Run time per job about 30 min
 
-wd=/p/projects/macmit/users/cmueller/repos/cropCalendars/utils/ggcmi_ph3
+# Deployment settings (WD, ACCOUNT, ...) — single source of truth, see settings.sh
+source "$(dirname "$(readlink -f "$0")")/settings.sh"
+wd=$WD
+
+# Toolchain modules (R + packages) — single source of truth, see env.sh
+source "$(dirname "$(readlink -f "$0")")/env.sh"
+load_r_env
 
 gcms=('GFDL-ESM4' 'IPSL-CM6A-LR' 'MPI-ESM1-2-HR' 'MRI-ESM2-0' 'UKESM1-0-LL')
 scens=('historical' 'ssp585' 'ssp370' 'ssp126' '2015gs')
@@ -25,7 +31,7 @@ for gc in "${!gcms[@]}";do
 
 sbatch --qos=standby --ntasks=1 --cpus-per-task=4 \
 -J nc_${gcms[gc]}_${scens[sc]}_${crops[cr]}_${irrigs[ir]} \
--A macmit -t 01:00:00 --chdir=${wd}  \
+-A ${ACCOUNT} -t 01:00:00 --chdir=${wd}  \
 R -f 03_calc_phu_for_lpjml.R \
 --args "${gcms[gc]}" "${scens[sc]}" "${crops[cr]}" "${irrigs[ir]}"
 

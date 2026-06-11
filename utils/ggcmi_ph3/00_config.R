@@ -18,8 +18,19 @@ library(zoo)           # for rolling mean
 # ------------------------------------ #
 # General Settings
 
+# Deployment paths and SLURM account live in settings.sh, so the .sh job scripts
+# and this config share a single source of truth. Parse the KEY=VALUE lines here.
+settings_file <- if (exists("work_dir")) file.path(work_dir, "settings.sh") else "settings.sh"
+.settings <- local({
+  lines <- readLines(settings_file)
+  lines <- lines[grepl("^[A-Za-z_][A-Za-z0-9_]*=", lines)]   # keep KEY=VALUE lines
+  keys  <- sub("=.*$", "", lines)
+  vals  <- gsub("(^[\"']|[\"']$)", "", trimws(sub("^[^=]*=", "", lines)))
+  setNames(as.list(vals), keys)
+})
+
 # Output directory: where output data are going to be saved
-output_dir <- paste0("/p/projects/macmit/data/GGCMI/phase3/GGCMI_ph3_adaptation_cropping_calendars/")
+output_dir <- .settings$OUTPUT_DIR
 
 parallel     <- TRUE
 cluster_job  <- TRUE
@@ -30,8 +41,9 @@ ccal_years    <- seq(1601, 2091, by = 10)
 # Number of years for average climate
 clm_avg_years <- 30
 
-climate_dir <- paste0("/p/projects/macmit/data/GGCMI/phase3/input_land_only_v2/")
-isimip3b.path <- "/p/projects/lpjml/input/scenarios/ISIMIP3bv2/" # .clm climate
+climate_dir   <- .settings$CLIMATE_DIR
+isimip3b.path <- .settings$ISIMIP3B_PATH # .clm climate
+agmip_dir     <- .settings$AGMIP_DIR     # AgMIP reference crop calendars (used in 02)
 
 # Climate input files
 gcms <- c(

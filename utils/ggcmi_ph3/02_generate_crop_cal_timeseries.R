@@ -13,11 +13,9 @@ print(stime)
 
 # ------------------------------------ #
 # General settings
-work_dir <- paste(
-  "/p/projects/macmit/users/cmueller/repos/cropCalendars/utils/ggcmi_ph3/"
-)
-setwd(work_dir)
-source("./00_config.R")
+# Run from the pipeline dir: sbatch passes --chdir=$WD, interactive runs cd there.
+work_dir <- getwd()
+source(file.path(work_dir, "00_config.R"))
 
 makeplot <- TRUE
 
@@ -100,7 +98,7 @@ dtdir  <- paste0(output_dir, "crop_calendars/DT/")
 ncdir  <- paste0(output_dir, "crop_calendars/ncdf/", gcm, "/", scen, "/")
 csvdir <- paste0(ncdir, "csv/")
 pldir  <- paste0(output_dir, "crop_calendars/plots/", gcm, "/", scen, "/")
-ggdir  <- "/p/projects/macmit/data/GGCMI/AgMIP.input/phase3/crop_calendar/"
+ggdir  <- agmip_dir
 
 if (!dir.exists(ncdir )) dir.create(ncdir,  recursive = T)
 if (!dir.exists(pldir )) dir.create(pldir,  recursive = T)
