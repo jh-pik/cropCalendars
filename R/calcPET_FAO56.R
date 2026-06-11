@@ -73,6 +73,11 @@ calcPET_FAO56 <- function(temp,
   rs  <- 70
   pet <- (s * Rn + aero) / (s + gamma_t * (1 + rs / raH)) / lambda
 
-  return(pmax(0, pet))
+  # Clamp at 0 while keeping the input shape: pmax() drops dim, which breaks the
+  # cell-vectorised (matrix) callers. pmax is NA-safe; restore dim afterwards.
+  d   <- dim(pet)
+  pet <- pmax(0, pet)
+  if (!is.null(d)) dim(pet) <- d
+  return(pet)
 
 }

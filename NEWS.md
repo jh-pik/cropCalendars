@@ -4,6 +4,10 @@
 
 ### Bug fixes
 
+- **`calcPET_FAO56`**: preserve the shape of the inputs. The final `pmax(0, pet)` dropped the
+  `dim` attribute, so passing matrices (cell-vectorised callers, e.g. all cells × days at once)
+  returned a vector. Now clamps at 0 while restoring `dim`; NA-safe; vector inputs unchanged.
+
 - **`date_to_doy(skip_feb29 = TRUE)`**: corrected the leap-year fold point. The condition
   `doy1 > 28` mis-folded at Jan. 29 (collapsing Jan. 29 onto DOY 28 and shifting the late-Jan/
   Feb day-of-year by one in leap years). Changed to `doy1 > 59` ("after Feb. 28", whose
