@@ -271,14 +271,19 @@ utils/ggcmi_ph3/01_calc_crop_calendars.R
   do after the GFDL-ESM4 test passes, not as part of the path refactor.
 
 - **(DONE) Cache the monthly climate; split stage 01 into preprocess + per-crop steps.**
-  Implemented as `01a_calc_monthly_climate.{R,sh}` (computes & caches the crop-independent
-  monthly climate once per GCM×scenario×window → `crop_calendars/monthly_climate/<scen>/<gcm>/
-  monthly_climate_<gcm>_<scen>_<sy>_<ey>.Rdata`) and `01b_calc_crop_calendars.{R,sh}` (loads
-  the cache, runs `calcCropCalendars` per pixel, writes the same `DT_output_*.Rdata` stage 02
-  consumes). This removes the ~N_crops× recompute of the monthly climate (the dominant reason
-  the fused `01` was much slower than the standalone pipeline at
-  `/p/projects/landuse/LPJmL_for_MAgPIE/crop_calendars/scripts/`), keeping FAO-56. Output is
-  identical by construction; verified on 5 pixels (`identical(dfA,dfB)==TRUE`). The original
-  `01_calc_crop_calendars.{R,sh}` is kept as a reference; retire it once 01a/01b are confirmed
-  at full grid scale. (Standalone also uses Priestley-Taylor / 2 vars vs FAO-56 / 7 vars — a
-  separate, intentional accuracy-vs-cost difference; keep FAO-56.)
+  `01a_calc_monthly_climate.{R,sh}` computes & caches the crop-independent monthly climate
+  once per GCM×scenario×window → `crop_calendars/monthly_climate/<scen>/<gcm>/
+  monthly_climate_<gcm>_<scen>_<sy>_<ey>.Rdata`; `01b_calc_crop_calendars.{R,sh}` loads the
+  cache, runs `calcCropCalendars` per pixel, writes the same `DT_output_*.Rdata` stage 02
+  consumes. Removes the ~N_crops× monthly-climate recompute (the reason the fused `01` was much
+  slower than the standalone pipeline at `/p/projects/landuse/LPJmL_for_MAgPIE/crop_calendars/
+  scripts/`), keeping FAO-56.
+  Design (matches the standalone): `01a` **streams over years** (one year of the full grid in
+  memory at a time) and **vectorises FAO-56 PET over all cells** — so it needs no spatial
+  chunking and runs **single-threaded** (one job per GCM×scenario×year; parallelise via a SLURM
+  job array if I/O-bound). `01b` is a **single-threaded** pixel loop (no chunking; parallelism
+  is one job per crop×year). Verified identical to the per-pixel `calcMonthlyClimate` path:
+  accumulation max abs diff 2e-14 (monthly fields exact after `round(,5)`); cell extraction
+  exact; crop-calendar round-trip `identical==TRUE`. Original `01_calc_crop_calendars.{R,sh}`
+  kept as reference; retire once 01a/01b are confirmed at full grid scale. (Standalone uses
+  Priestley-Taylor / 2 vars vs FAO-56 / 7 vars — a separate intentional difference; keep FAO-56.)

@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Step 1b: crop calendars from the cached monthly climate (run AFTER 01a completes).
-# Light step (no climate I/O, just calcCropCalendars per pixel) — modest core count.
+# Light, single-threaded (no climate I/O, just calcCropCalendars per pixel).
+# Parallelism is at the job level: one job per crop x year.
 
 # Deployment settings (WD, ACCOUNT, ...) — single source of truth, see settings.sh
 source "$(dirname "$(readlink -f "$0")")/settings.sh"
@@ -16,10 +17,6 @@ load_r_env
 gcms=('GFDL-ESM4')
 scens=('historical')
 crops=('Maize' 'Rice' 'Millet' 'Sorghum' 'Soybean' 'Spring_Wheat' 'Winter_Wheat')
-
-# sbatch settings (light: 16 workers on one node, no I/O)
-nnodes=1
-ntasks=16
 
 # MAIN
 for gc in "${!gcms[@]}";do
@@ -41,10 +38,10 @@ for gc in "${!gcms[@]}";do
 
 echo "GCM: ${gcms[gc]} --- SCENARIO: ${scens[sc]} --- CROP: ${crops[cr]} YEAR: ${years[yy]}"
 
-sbatch --nodes=${nnodes} --ntasks=1 --cpus-per-task=${ntasks} \
+sbatch --ntasks=1 --cpus-per-task=1 --mem=4G \
 -t 00:30:00 -J crop_cal -A ${ACCOUNT} --chdir=${wd} --qos=standby \
 R -f 01b_calc_crop_calendars.R \
---args "${gcms[gc]}" "${scens[sc]}" "${crops[cr]}" "${years[yy]}" "${nnodes}" "${ntasks}"
+--args "${gcms[gc]}" "${scens[sc]}" "${crops[cr]}" "${years[yy]}"
 
       done # yy
     done # cr

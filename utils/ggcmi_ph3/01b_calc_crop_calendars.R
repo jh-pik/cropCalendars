@@ -6,13 +6,15 @@
 # Produces the same DT_output_crop_calendars_*.Rdata that stage 02 consumes, so
 # downstream is unchanged.
 #
-# Args: GCM SCENARIO CROP YEAR NNODES NTASKS
+# Single-threaded by design: there is no climate I/O and no per-pixel PET here, just
+# calcCropCalendars over the cached monthly climate. Parallelism is at the job level
+# (one job per crop x year). If a single crop ever needs to be faster, split it with a
+# SLURM job array; no in-script chunking is required.
+#
+# Args: GCM SCENARIO CROP YEAR
 # ---------------------------------------------------------------------------- #
 
 rm(list = ls(all.names = TRUE))
-
-num_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = parallel::detectCores()))
-cat("\nNumber of cores: ", num_cores, "\n")
 
 starttime <- Sys.time()
 print(starttime)
@@ -29,20 +31,16 @@ if (cluster_job == TRUE) {
   options(echo = FALSE)
   args <- commandArgs(trailingOnly = TRUE)
 } else {
-  args <- c("GFDL-ESM4", "historical", "Maize", "1991", "1", "1")
+  args <- c("GFDL-ESM4", "historical", "Maize", "1991")
 }
 print(args)
 
-gcm    <- args[1]
-scen   <- args[2]
-cro    <- args[3]
-year   <- as.numeric(args[4])
-nnodes <- as.numeric(args[5])
-ntasks <- as.numeric(args[6])
+gcm  <- args[1]
+scen <- args[2]
+cro  <- args[3]
+year <- as.numeric(args[4])
 
-cat("\n", gcm, scen, cro, year, nnodes, ntasks, "\n")
-
-ncpus <- ntasks * nnodes
+cat("\n", gcm, scen, cro, year, "\n")
 
 # Climate window for this year (must match 01a)
 syear <- year - clm_avg_years
@@ -67,66 +65,29 @@ npix <- nrow(grid_clm)
 cat("Pixels in cache: ", npix, "\n")
 
 # ------------------------------------ #
-# Register cluster
-if (parallel == TRUE) {
-  library(foreach)
-  library(doParallel)
-  if (!exists("ncpus")) ncpus <- 120
-  cl <- makeCluster(ncpus)
-  registerDoParallel(cl)
+# Per-pixel crop calendars (single-threaded loop over the cached monthly climate)
+ccal_list <- vector("list", npix)
+for (j in seq_len(npix)) {
+  mclm <- list(mtemp      = MTEMP[j, ],
+               mprec      = MPREC[j, ],
+               mpet       = MPET[j, ],
+               mppet      = MPPET[j, ],
+               mppet_diff = MPPET_DIFF[j, ],
+               dtemp      = DTEMP[j, ],
+               dppet      = DPPET[j, ])
+
+  ccal_list[[j]] <- calcCropCalendars(
+    lon      = grid_clm$lon[j],
+    lat      = grid_clm$lat[j],
+    mclimate = mclm,
+    crop     = cro
+  )
+
+  if (j %% 5000 == 0) cat(j, "of", npix, "\n")
 }
 
-# ------------------------------------ #
-# Split pixels into one block per worker. Each block carries only its own slice
-# of the cache matrices (avoids copying the full cache to every worker).
-nblocks <- min(ncpus, npix)
-blk_id  <- cut(seq_len(npix), breaks = nblocks, labels = FALSE)
-blocks  <- split(seq_len(npix), blk_id)
-
-block_data <- lapply(blocks, function(idx) {
-  list(lon        = grid_clm$lon[idx],
-       lat        = grid_clm$lat[idx],
-       mtemp      = MTEMP[idx, , drop = FALSE],
-       mprec      = MPREC[idx, , drop = FALSE],
-       mpet       = MPET[idx, , drop = FALSE],
-       mppet      = MPPET[idx, , drop = FALSE],
-       mppet_diff = MPPET_DIFF[idx, , drop = FALSE],
-       dtemp      = DTEMP[idx, , drop = FALSE],
-       dppet      = DPPET[idx, , drop = FALSE])
-})
-
-# ------------------------------------ #
-# Per-pixel crop calendars (light compute, no I/O)
-output_df <- foreach(bd        = block_data,
-                     .combine  = "rbind",
-                     .inorder  = FALSE,
-                     .packages = c("cropCalendars"),
-                     .verbose  = FALSE
-                     ) %dopar% {
-
-  n   <- length(bd$lon)
-  res <- vector("list", n)
-  for (k in seq_len(n)) {
-    mclm <- list(mtemp      = bd$mtemp[k, ],
-                 mprec      = bd$mprec[k, ],
-                 mpet       = bd$mpet[k, ],
-                 mppet      = bd$mppet[k, ],
-                 mppet_diff = bd$mppet_diff[k, ],
-                 dtemp      = bd$dtemp[k, ],
-                 dppet      = bd$dppet[k, ])
-
-    res[[k]] <- calcCropCalendars(
-      lon      = bd$lon[k],
-      lat      = bd$lat[k],
-      mclimate = mclm,
-      crop     = cro
-    )
-  }
-  do.call(rbind, res)
-}
-
-cat("\nFinished foreach loop\n")
-if (parallel == TRUE) stopCluster(cl)
+output_df <- do.call(rbind, ccal_list)
+cat("\nFinished pixel loop\n")
 
 # ------------------------------------ #
 # Save data table (same name/format as the original stage 01)

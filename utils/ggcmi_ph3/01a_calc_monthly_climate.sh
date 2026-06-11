@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Step 1a: compute & cache the average monthly climate (once per GCM x scenario x year).
-# Heavy step (reads 7 daily climate vars + FAO-56 PET) — runs on a full node.
+# Year-streaming + cell-vectorised FAO-56: single-threaded, bounded memory (~one
+# variable-year). One job per GCM x scenario x year; parallelise via job array if needed.
 
 # Deployment settings (WD, ACCOUNT, ...) — single source of truth, see settings.sh
 source "$(dirname "$(readlink -f "$0")")/settings.sh"
@@ -15,10 +16,6 @@ load_r_env
 # gcms=('GFDL-ESM4' 'IPSL-CM6A-LR' 'MPI-ESM1-2-HR' 'MRI-ESM2-0' 'UKESM1-0-LL')
 gcms=('GFDL-ESM4')
 scens=('historical')
-
-# sbatch settings
-nnodes=1
-ntasks=120  # 120 (not 128): R caps simultaneous connections at 128, makeCluster needs headroom
 
 # MAIN
 for gc in "${!gcms[@]}";do
@@ -39,10 +36,10 @@ for gc in "${!gcms[@]}";do
 
 echo "GCM: ${gcms[gc]} --- SCENARIO: ${scens[sc]} --- YEAR: ${years[yy]}"
 
-sbatch --nodes=${nnodes} --ntasks-per-node=${ntasks} --exclusive \
+sbatch --ntasks=1 --cpus-per-task=1 --mem=8G \
 -t 02:00:00 -J monthly_clm -A ${ACCOUNT} --chdir=${wd} --qos=standby \
 R -f 01a_calc_monthly_climate.R \
---args "${gcms[gc]}" "${scens[sc]}" "${years[yy]}" "${nnodes}" "${ntasks}"
+--args "${gcms[gc]}" "${scens[sc]}" "${years[yy]}"
 
     done # yy
   done # sc
