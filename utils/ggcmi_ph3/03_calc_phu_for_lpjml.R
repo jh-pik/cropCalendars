@@ -18,7 +18,17 @@ work_dir <- getwd()
 source(file.path(work_dir, "00_config.R"))
 
 makeplot <- TRUE
-NCELLS   <- ncells   # derived from the grid in 00_config.R
+
+# Read the LPJmL grid here (the only stage that needs it, for the .clm output).
+# lpjmlkit::read_io auto-detects the header; round to the grid's native 0.01-degree
+# resolution. grid_df / NCELLS are read as globals by generatePHUTserie_isimip3().
+library(lpjmlkit)
+grid_io <- suppressWarnings(read_io(grid_file, silent = TRUE))
+grid_df <- data.frame(
+  lon = round(as.numeric(grid_io$data[, 1, 1]), 2),
+  lat = round(as.numeric(grid_io$data[, 1, 2]), 2)
+)
+NCELLS  <- nrow(grid_df)
 
 # ------------------------------------ #
 # Individual-run settings

@@ -267,11 +267,10 @@ utils/ggcmi_ph3/01_calc_crop_calendars.R
   covers every cell with climate data. The LPJmL grid (`grid_df`, read via `lpjmlkit::read_io`
   in `00_config.R`) is only *used* by stage 03 to write the `.clm` files. For ISIMIP3b the two
   masks differ by exactly one sub-Antarctic island cell (climate has 178.75,−49.25; LPJmL has
-  178.75,−49.75), so 01a yields 67420 cells vs the old 67419. Residual tidy-ups if desired:
-  move the `grid_df`/`read_io` load out of `00_config.R` into `03` (it is loaded for every stage
-  but only 03 uses it), and retire the now-superseded legacy `01_calc_crop_calendars.{R,sh}`
-  (kept working only because `00_config.R` still loads `grid_df`). Stage 03 should also gap-fill
-  the one LPJmL cell the climate lacks (currently NA in the `.clm`).
+  178.75,−49.75), so 01a yields 67420 cells vs the old 67419. **(DONE)** the grid is now read
+  via `lpjmlkit::read_io` only in stage 03, and the superseded legacy `01_calc_crop_calendars.{R,sh}`
+  has been removed (01a/01b are validated bit-identical). Remaining: stage 03 should gap-fill the
+  one LPJmL cell the climate lacks (currently NA in the `.clm`).
 
 - **(FIXED) `plotMap_ggplot` / `plotMapCropCalendars` namespacing + bugs.** Now qualify all
   external calls (`ggplot2::*`, `scales::squish`, `RColorBrewer::brewer.pal`,

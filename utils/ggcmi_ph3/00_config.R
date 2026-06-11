@@ -11,7 +11,6 @@ library(data.table)
 library(foreach)
 library(cropCalendars)
 library(zoo)           # for rolling mean
-library(lpjmlkit)      # for reading the LPJmL grid file
 #library(unix)
 
 # ------------------------------------ #
@@ -43,7 +42,7 @@ clm_avg_years <- 30
 climate_dir   <- .settings$CLIMATE_DIR
 isimip3b.path <- .settings$ISIMIP3B_PATH # .clm climate
 agmip_dir     <- .settings$AGMIP_DIR     # AgMIP reference crop calendars (used in 02)
-grid_file     <- .settings$GRID_BIN      # LPJmL grid (land cells)
+grid_file     <- .settings$GRID_BIN      # LPJmL grid path; read only in 03 (.clm writing)
 
 # Climate input files
 gcms <- c(
@@ -82,19 +81,8 @@ eyears <- list(
   "ssp370"     = seq(2020, 2100, by = 10)
 )
 
-# ------------------------------------ #
-# Read grid file via lpjmlkit::read_io, which auto-detects the header (cell count,
-# bands, datatype, scalar). Band 1 = lon, band 2 = lat. read_io stores coordinates
-# in single precision, so round to the grid's native 0.01-degree resolution; this
-# also makes the values match the climate NetCDF coordinate axes exactly (the cell
-# lookup in 01a depends on an exact numeric match).
-grid_io <- suppressWarnings(read_io(grid_file, silent = TRUE))
-grid_df <- data.frame(
-  lon = round(as.numeric(grid_io$data[, 1, 1]), 2),
-  lat = round(as.numeric(grid_io$data[, 1, 2]), 2)
-)
-ncells <- nrow(grid_df)   # derived from the grid, not hardcoded
-cat("Read grid:", ncells, "cells from", grid_file, "\n")
+# NB: the LPJmL grid is NOT read here. 01a/01b/02 work on the climate land mask; only
+# stage 03 (writing the .clm files) needs the LPJmL grid, and reads it there.
 
 # ------------------------------------------------------#
 # Crop Names: ----
