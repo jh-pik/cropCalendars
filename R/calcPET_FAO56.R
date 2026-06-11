@@ -73,6 +73,6 @@ calcPET_FAO56 <- function(temp,
   rs  <- 70
   pet <- (s * Rn + aero) / (s + gamma_t * (1 + rs / raH)) / lambda
 
-  return(max(0, pet))
+  return(pmax(0, pet))
 
 }

@@ -36,7 +36,7 @@ calcPET <- function(temp,
     Rns   <- (1 - 0.23) * swdown * 86400
     Rnl   <- (lwdown - sigma * (temp + 273.15)^4) * 86400
     Rn    <- Rns + Rnl
-    eeq   <- max(0, s / (s + gamma_t) / lambda * Rn)
+    eeq   <- pmax(0, s / (s + gamma_t) / lambda * Rn)
 
   } else {
 

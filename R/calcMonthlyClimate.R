@@ -98,41 +98,24 @@ calcMonthlyClimate <- function(lat        = NULL,
     if (length(missing_vars) > 0)
       stop("pet_method = 'fao56' requires: ", paste(missing_vars, collapse = ", "))
 
-    pet <- mapply(calcPET_FAO56,
-                  temp      = temp,
-                  windspeed = windspeed,
-                  humid     = humid,
-                  swdown    = swdown,
-                  lwdown    = lwdown,
-                  ps        = ps)
+    pet <- calcPET_FAO56(temp, windspeed, humid, swdown, lwdown, ps)
 
   } else {
 
     if (!is.null(swdown) && !is.null(lwdown)) {
-      pet <- mapply(calcPET, temp = temp, lat = lat, day = d_dates,
-                    swdown = swdown, lwdown = lwdown)
+      pet <- calcPET(temp, lat, d_dates, swdown = swdown, lwdown = lwdown)
     } else {
       pet <- mapply(calcPET, temp = temp, lat = lat, day = d_dates)
     }
 
   }
 
-  # Compute monthly climate for each year
-  mtemp_y <- array(NA, dim = c(nyears, nmonths))
-  mprec_y <- mpet_y <- mppet_y <- mtemp_y
-
-  for (yy in seq_len(nyears)) {
-    for (mm in seq_len(nmonths)) {
-
-      idx <- which(y_dates == years[yy] & m_dates == mm)
-
-      mtemp_y[yy, mm] <- mean(temp[idx])
-      mprec_y[yy, mm] <- sum(prec[idx])
-      mpet_y[yy, mm]  <- sum(pet[idx])
-      mppet_y[yy, mm] <- mprec_y[yy, mm] / mpet_y[yy, mm]
-
-    }
-  }
+  # Aggregate to monthly climate for each year
+  ym      <- list(y_dates, m_dates)
+  mtemp_y <- tapply(temp, ym, mean)
+  mprec_y <- tapply(prec, ym, sum)
+  mpet_y  <- tapply(pet,  ym, sum)
+  mppet_y <- mprec_y / mpet_y
 
   mtemp      <- round(apply(mtemp_y, 2, mean), digits = 5)
   mprec      <- round(apply(mprec_y, 2, mean), digits = 5)
