@@ -10,8 +10,8 @@ source "$(dirname "$(readlink -f "$0")")/settings.sh"
 BASE_DIR_ROOT=$PUBLISH_DIR
 
 # --fix_rec_dmn $VAR $FILE $FILE.tmp
-GCMS="GFDL-ESM4 IPSL-CM6A-LR MPI-ESM1-2-HR MRI-ESM2-0 UKESM1-0-LL"
-SPECS="ssp585soc-adapt ssp370soc-adapt ssp126soc-adapt historical"
+GCMS="GFDL-ESM4"
+SPECS="historical"
 
 REF_DATE="1601-01-01,00:00:00,1year"
 CALENDAR="standard"

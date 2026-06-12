@@ -14,6 +14,10 @@
 # R + package toolchain (stages 01-03): provides R 4.3.2 and netcdf-c.
 load_r_env() {
   source /p/system/modulefiles/defaults/piam/module_load_piam_fast
+  # HDF5 file locking fails ("Permission denied" in nc_create) on this shared
+  # filesystem when writing NetCDF4 from a login node; disable it so stage 02/03
+  # work both interactively and under sbatch.
+  export HDF5_USE_FILE_LOCKING=FALSE
 }
 
 # NetCDF post-processing toolchain (stages 04-07): provides nco and cdo.

@@ -38,6 +38,18 @@ generateCropCalTSerie_isimip3 <- function(
   lats  <- seq( -89.75,  89.75, by = 0.5)
   years <- c(min(SYs):max(EYs))
 
+  # Fixed, GLOBAL category->integer codes for the seasonality type and harvest
+  # reason written to the ncdf. These MUST be global (not per-pixel), otherwise a
+  # temporally-constant pixel would always map to code 1 regardless of its actual
+  # type. The order reproduces the ncdf long_name documentation and the standalone
+  # pipeline's factor levels:
+  #   seasonality : 1=NoSeas 2=Prec 3=PrecTemp 4=Temp 5=TempPrec
+  #   harv-reason : 1=GPmin 2=GPmed(maxrp) 3=GPmax 4=Wstress 5=Topt(base) 6=Thigh(opt)
+  # harvreason_levels matches calcHarvestDate()'s hd_vector name order.
+  season_levels     <- c("NO_SEASONALITY", "PREC", "PRECTEMP", "TEMP", "TEMPPREC")
+  harvreason_levels <- c("hd_first", "hd_maxrp", "hd_last",
+                         "hd_wetseas", "hd_temp_base", "hd_temp_opt")
+
   AR <- array(NA, dim = c(length(lons), length(lats), length(years)),
               dimnames = list(lon = lons, lat = lats, year = years))
   str(AR)
@@ -166,9 +178,9 @@ generateCropCalTSerie_isimip3 <- function(
     ilon <- ilon_all[i]; ilat <- ilat_all[i]
 
     sdate <- ARsd[ilon, ilat, ]   # sowing date
-    seast <- as.numeric(as.factor(ARst[ilon, ilat, ]))   # seasonality type
+    seast <- as.integer(factor(ARst[ilon, ilat, ], levels = season_levels))     # seasonality type (global codes 1-5)
     hdate <- ARhd[ilon, ilat, ]   # harvest date
-    hreas <- as.numeric(as.factor(ARhr[ilon, ilat, ]))   # harvest reason
+    hreas <- as.integer(factor(ARhr[ilon, ilat, ], levels = harvreason_levels)) # harvest reason (global codes 1-6)
     ddate <- ARdd[ilon, ilat, ]   # default date == 0
     sggcm <- sdggcmi[ilon, ilat] # sowing date ggcmi
     hggcm <- hdggcmi[ilon, ilat] # harvest date ggcmi

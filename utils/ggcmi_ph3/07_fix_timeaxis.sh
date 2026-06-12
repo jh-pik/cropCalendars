@@ -11,8 +11,8 @@ BASE_DIR_ROOT=$PUBLISH_DIR
 
 #for PERIOD in $periods; do
 #BASE_DIR=$BASE_DIR_ROOT #/$PERIOD
-GCMS="GFDL-ESM4 IPSL-CM6A-LR MPI-ESM1-2-HR MRI-ESM2-0 UKESM1-0-LL"
-SPECS="ssp585soc-adapt ssp370soc-adapt ssp126soc-adapt historical"
+GCMS="GFDL-ESM4"
+SPECS="historical"
 
 REF_DATE="1601-01-01,00:00:00,1year"
 CALENDAR="standard"
@@ -41,10 +41,12 @@ for FILE in $(find $BASE_DIR -maxdepth 3 -type f | sort );do
 
 #    continue
 
-    cdo -s --history -setreftime,$REF_DATE -settaxis,$TIME -setcalendar,$CALENDAR $FILE $FILE.tmp
+    # -L serialises HDF5 access; CDO's NetCDF4/HDF5 lib is not thread-safe and
+    # segfaults under default multi-threading (see CDO warning).
+    cdo -L -s --history -setreftime,$REF_DATE -settaxis,$TIME -setcalendar,$CALENDAR $FILE $FILE.tmp
 #    [ -f ${FILE}.tmp ] && ncatted -O -h -a missing_value,,o,f,1e+20 ${FILE}.tmp
     # invert latidues and correct fill value as per request by Matthias
-    cdo -f nc4c -z zip invertlat -setctomiss,NaNf $FILE.tmp $FILE
+    cdo -L -f nc4c -z zip invertlat -setctomiss,NaNf $FILE.tmp $FILE
 #        exit
   fi
 done

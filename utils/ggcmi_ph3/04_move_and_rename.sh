@@ -11,8 +11,8 @@ BASE_DIR_OUT=$PUBLISH_DIR
 
 #for PERIOD in $periods; do
 BASE_DIR=$BASE_DIR_ROOT #/$PERIOD
-GCMS="GFDL-ESM4 IPSL-CM6A-LR MPI-ESM1-2-HR MRI-ESM2-0 UKESM1-0-LL"
-SPECS_RAW="ssp585 ssp370 ssp126 histsoc"
+GCMS="GFDL-ESM4"
+SPECS_RAW="histsoc"
 
 # Specifier changes
 #RCP26-farfuture --> rcp26
