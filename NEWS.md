@@ -4,6 +4,14 @@
 
 ### Changes
 
+- **`generateCropCalTSerie_isimip3` (performance, ~16× on a GFDL-ESM4 test, 9.3 min → 35 s)**:
+  vectorise the array-fill loop (one flat-index assignment instead of a per-pixel × per-year
+  double loop with `which()` lookups); build `count.dt` once instead of growing it with `rbind`
+  inside the pixel loop (was O(n²)); and parallelise the per-pixel smoothing via
+  `parallel::mclapply` — new `ncores` argument (default 1 = serial `lapply`, so the package
+  stays portable; the pipeline passes `SLURM_CPUS_PER_TASK`). Output is bit-identical
+  (all 8 NetCDF variables, 0 diff vs the serial result).
+
 - **Cell-vectorised, streaming monthly-climate engine** (`initMonthlyClimate` /
   `addYearMonthlyClimate` / `finalizeMonthlyClimate`, new `R/monthlyClimateAccum.R`).
   Years are added one at a time, vectorised over an arbitrary number of grid cells, so the

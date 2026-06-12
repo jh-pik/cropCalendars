@@ -27,6 +27,7 @@ generateCropCalTSerie_isimip3 <- function(
     ncdir      = NULL,
     csvdir     = NULL,
     pldir      = NULL,
+    ncores     = 1,
     makeplot   = FALSE
 ) {
 
@@ -113,28 +114,25 @@ generateCropCalTSerie_isimip3 <- function(
 
     print(dim(DT))
 
-    # Loop through pixels and extract values from crop calendar DT
-    for (i in 1:nrow(DT)){ # = pixel index
-
-      if(i%%1e4==0) cat(i, "\t")
-
-      ilat <- which(lats == DT$lat[i])
-      ilon <- which(lons == DT$lon[i])
-
-      # Repeat average dates each year in the time-slice tt
-      for (j in iyears) { # iyears index of years in time slice tt
-
-        ARsd[ilon, ilat, j] <- DT$sowing_doy[i]
-        ARhd[ilon, ilat, j] <- DT$maturity_doy[i]
-        ARgp[ilon, ilat, j] <- DT$growing_period[i]
-        ARst[ilon, ilat, j] <- DT$seasonality_type[i]
-        ARhr[ilon, ilat, j] <- DT$harvest_reason[i]
-        ARss[ilon, ilat, j] <- ifelse(DT$sowing_season[i] == "winter", 1, 2)
-        ARdd[ilon, ilat, j] <- ifelse(DT$sowing_month[i] == 0, 0, 1)
-        # Note: # ARdd = indicates if is default sdate
-
-      } # j
-    } # i
+    # Vectorised fill (replaces a per-pixel x per-year double loop with a per-cell
+    # linear-index assignment): map each pixel to its flat [lon,lat] index once, then
+    # assign all pixels across all slice-years at once. ARdd marks default sdate.
+    lin <- match(DT$lon, lons) + (match(DT$lat, lats) - 1L) * length(lons)
+    ss  <- ifelse(DT$sowing_season == "winter", 1, 2)
+    dd  <- ifelse(DT$sowing_month  == 0, 0, 1)
+    fill_slice <- function(A, v) {
+      dim(A) <- c(length(lons) * length(lats), length(years))
+      A[lin, iyears] <- v
+      dim(A) <- c(length(lons), length(lats), length(years))
+      A
+    }
+    ARsd <- fill_slice(ARsd, DT$sowing_doy)
+    ARhd <- fill_slice(ARhd, DT$maturity_doy)
+    ARgp <- fill_slice(ARgp, DT$growing_period)
+    ARst <- fill_slice(ARst, DT$seasonality_type)
+    ARhr <- fill_slice(ARhr, DT$harvest_reason)
+    ARss <- fill_slice(ARss, ss)
+    ARdd <- fill_slice(ARdd, dd)
     cat("\n")
 
   } # tt
@@ -155,24 +153,17 @@ generateCropCalTSerie_isimip3 <- function(
   # ARss                  # Unmodified, remain as in the original
 
 
-  # Keep track of replaced values
-  # --------------------------#
-  count <- 0                                     # for plotting only some pixels
-  count.dt <- data.frame(lon            = numeric(),
-                         lat            = numeric(),
-                         sdate.smoothed = logical(),    # removed jumps
-                         hdate.smoothed = logical(),    # removed jumps
-                         ddate.smoothed = logical(),    # removed jumps
-                         ddate.replaced = logical())    # replaced default sdate
+  # Per-pixel filtering/smoothing. Pixels are independent, so run via mclapply when
+  # ncores > 1 (fork; shares the input arrays copy-on-write). Each call returns the
+  # filtered output series and the four replaced/smoothed flags; scattered back below.
+  nlon <- length(lons); nlat <- length(lats)
+  lin  <- match(DT$lon, lons) + (match(DT$lat, lats) - 1L) * nlon
+  ilon_all <- ((lin - 1L) %% nlon) + 1L
+  ilat_all <- ((lin - 1L) %/% nlon) + 1L
 
+  process_pixel <- function(i) {
 
-  # --------------------------#
-  for (i in seq_len(nrow(DT))) {
-
-    if (i %% 1e3 == 0) cat(i, "\t") #else cat(".")
-
-    ilat <- which(lats == DT$lat[i])
-    ilon <- which(lons == DT$lon[i])
+    ilon <- ilon_all[i]; ilat <- ilat_all[i]
 
     sdate <- ARsd[ilon, ilat, ]   # sowing date
     seast <- as.numeric(as.factor(ARst[ilon, ilat, ]))   # seasonality type
@@ -271,32 +262,8 @@ generateCropCalTSerie_isimip3 <- function(
                        hdate.steps - sdate.steps,
                        hdate.steps + 365 - sdate.steps)
 
-    # Fill in new arrays with filtered values ----
-    # ------------------------------------------------------#
-
-    ARsd.annual[ilon, ilat, ] <- sdate.annual   # Sowing dates (moving-averaged)
-    ARsd.mavgw[ilon, ilat, ]  <- sdate.annual.m # Sdate (moving avg window)
-    ARsd.steps[ilon, ilat, ]  <- sdate.steps   # Sowing dates (step-wise)
-    ARhd.steps[ilon, ilat, ]  <- hdate.steps    # Harvest date (step-wise)
-    ARgp.steps[ilon, ilat, ]  <- gp.steps      # Growing period (step-wise)
-    ARst.repl[ilon, ilat, ]   <- seast.r        # Seasonality type (replaced)
-    ARhr.repl[ilon, ilat, ]   <- hreas.r        # Harvest reason (replaced)
-    #ARss (unmodified, remain as in the original)
-
-
-    # Count replaced values ----
-    # ------------------------------------------------------#
-
-    count.dt <- rbind(
-      count.dt,
-      data.frame(pixelnr = i,
-                 lon            = DT$lon[i],
-                 lat            = DT$lat[i],
-                 sdate.smoothed = any(sdate.m[which_years_nc] == 1L),
-                 hdate.smoothed = any(hdate.m[which_years_nc] == 1L),
-                 ddate.smoothed = any(sdate.m3[which_years_nc] == 2L),
-                 ddate.replaced = any(ddate.r[which_years_nc] == 0))
-    )
+    # (Filtered output series and replaced/smoothed flags are returned at the end of
+    #  process_pixel and scattered back into the full-grid arrays after the loop.)
 
 
     # Plot time series for testing ----
@@ -362,13 +329,47 @@ generateCropCalTSerie_isimip3 <- function(
 
     } # plot
 
-  } # i
+    list(sdate.annual = sdate.annual, sdate.annual.m = sdate.annual.m,
+         sdate.steps = sdate.steps, hdate.steps = hdate.steps, gp.steps = gp.steps,
+         seast.r = seast.r, hreas.r = hreas.r,
+         flags = c(any(sdate.m[which_years_nc]  == 1L),
+                   any(hdate.m[which_years_nc]  == 1L),
+                   any(sdate.m3[which_years_nc] == 2L),
+                   any(ddate.r[which_years_nc]  == 0)))
+  } # process_pixel
 
+  res <- if (ncores > 1) {
+    parallel::mclapply(seq_len(nrow(DT)), process_pixel, mc.cores = ncores)
+  } else {
+    lapply(seq_len(nrow(DT)), process_pixel)
+  }
+  if (any(vapply(res, function(x) !is.list(x) || is.null(x$flags), logical(1)))) {
+    stop("generateCropCalTSerie_isimip3: a per-pixel worker failed (retry with ncores = 1).")
+  }
+
+  # Scatter the per-pixel results back into the full-grid output arrays.
+  scatter <- function(A, field) {
+    M <- do.call(rbind, lapply(res, `[[`, field))   # [npix x nyears]
+    dim(A) <- c(nlon * nlat, length(years)); A[lin, ] <- M
+    dim(A) <- c(nlon, nlat, length(years)); A
+  }
+  ARsd.annual <- scatter(ARsd.annual, "sdate.annual")
+  ARsd.mavgw  <- scatter(ARsd.mavgw,  "sdate.annual.m")
+  ARsd.steps  <- scatter(ARsd.steps,  "sdate.steps")
+  ARhd.steps  <- scatter(ARhd.steps,  "hdate.steps")
+  ARgp.steps  <- scatter(ARgp.steps,  "gp.steps")
+  ARst.repl   <- scatter(ARst.repl,   "seast.r")
+  ARhr.repl   <- scatter(ARhr.repl,   "hreas.r")
 
   # Write count.dt in csv file to record which pixels have replaced values ----
   # ------------------------------------------------------#
-  if ( any(unlist(count.dt[i, 4:7]))) { count <- count + 1 }
-  cat("\nNr. of pixels for which sdate or hdate have been replaced: ", count,"\n")
+  flags <- do.call(rbind, lapply(res, `[[`, "flags"))
+  count.dt <- data.frame(pixelnr = seq_len(nrow(DT)),
+                         lon = DT$lon, lat = DT$lat,
+                         sdate.smoothed = flags[, 1], hdate.smoothed = flags[, 2],
+                         ddate.smoothed = flags[, 3], ddate.replaced = flags[, 4])
+  count <- sum(rowSums(flags) > 0)
+  cat("\nNr. of pixels for which sdate or hdate have been replaced: ", count, "\n")
 
   write.csv(count.dt,
             paste0(csvdir,

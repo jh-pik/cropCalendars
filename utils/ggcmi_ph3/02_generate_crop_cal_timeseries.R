@@ -127,6 +127,7 @@ generateCropCalTSerie_isimip3(
     ncdir      = ncdir,
     csvdir     = csvdir,
     pldir      = pldir,
+    ncores     = as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", "1")),
     makeplot   = FALSE
 )
 
