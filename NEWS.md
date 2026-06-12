@@ -1,5 +1,38 @@
 # cropCalendars NEWS
 
+## 0.3.0 — annual sliding-window pipeline
+
+### Major
+- **Pipeline rebuilt from a 10-year-step scheme to an annual 30-yr sliding window**
+  (`R/slidingMonthlyClimate.R` ring buffer; calendars computed every year, smooth and
+  rule-consistent, so the output moving average is dropped). New driver
+  `utils/ggcmi_ph3/01_compute_annual_calendars.R` replaces `01a`+`01b`. Future
+  scenarios seed the ring from historical climate; opt-in seed cache (`SAVE_SEED`).
+- **Stage 02** (`utils/ggcmi_ph3/02_assemble_annual_ncdf.R`) writes the
+  publication-ready ISIMIP3b DRS NetCDF in one pass (final variable names,
+  "years since 1601" time axis, **ascending latitude**, `_FillValue`/`missing_value`,
+  per-timestep chunking, publish path) — eliminating the NCO/CDO stages `04`–`07`
+  (and a `cdo -L` segfault). Fixes a **latitude inversion** vs the official product.
+
+### Algorithm
+- `calcDoyWetMonth` + `hd_wetseas` use **ΣP/ΣPET** (ratio of summed P and PET) from new
+  daily `dprec`/`dpet` climatologies, fixing P/PET blow-ups where PET≈0 (spurious
+  ~80-day sowing flips in monsoon cells).
+- `calcHarvestDateVector` harvest dates evaluated on the **daily** climatology:
+  `hd_temp_base` = centre of the warmest 30-day window (was warmest-month mid-day);
+  `hd_wetseas`/`hd_temp_opt` fixed (had computed month indices as DOYs).
+- `calcCropCalendars` ~2.5× faster (cumulative-sum rolling windows; `list2env`
+  unpacking; optional pre-extracted `crop_parameters`), output bit-identical.
+- `generatePHUTserie_isimip3`: reads `planting_day`/`maturity_day` from the DRS file;
+  new `smooth_window` (default 1 = PHU matches the growing period exactly).
+
+### Infrastructure
+- Climate files **discovered dynamically** across the official ISIMIP roots (3b
+  primary+secondary, 3a obsclim/spinclim); ensemble member / scenario / year-range read
+  from file names; product ranges derived from the data. Uniform 67420-cell GGCMI mask
+  (`ggcmi_landcells.csv`). Tunables centralised in `00_config.R`;
+  `enms`/`syears`/`eyears`/`ccal_years` removed.
+
 ## 0.2.0 (branch fix-alg-vectorize-phu)
 
 ### Changes
@@ -26,6 +59,15 @@
   depends on latitude/day-of-year.
 
 ### Bug fixes
+
+- **`generateCropCalTSerie_isimip3` — `seasonality` / `harv-reason` encoding**: these two
+  ncdf variables were encoded with `as.numeric(as.factor(...))` applied *per pixel*, so the
+  integer code was alphabetical among only the categories present at that pixel — every
+  temporally-constant pixel collapsed to code 1 (≈94 % spurious `NO_SEASONALITY`;
+  `harv-reason` → `GPmin`). Now mapped through fixed *global* factor levels
+  (`seasonality` 1=NoSeas…5=TempPrec; `harv-reason` 1=GPmin…6=Thigh), matching the ncdf
+  `long_name` and the standalone pipeline. Only these two variables change; sowing/harvest
+  dates are unaffected (jump detection depends on change-points, not the absolute code).
 
 - **`generateCropCalTSerie_isimip3`**: take `FYs`, `LYs`, `ggdir`, `ncdir`, `csvdir`, `pldir`
   as explicit arguments instead of reading them from the caller's global environment, and

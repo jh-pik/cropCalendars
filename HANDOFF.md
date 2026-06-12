@@ -1,6 +1,30 @@
 # Crop Calendar Pipeline — Deployment Hand-off
 
-## Context
+> **CURRENT STATE (annual sliding-window pipeline).** The pipeline has been rebuilt
+> from the 10-year-step scheme to an **annual 30-yr sliding window** (see
+> `METHODOLOGY_AND_CHANGES.md` in the working dir for the full design + change log).
+> Most of the "Context"/"Deployment Plan" sections below describe the **superseded**
+> window-scheme pipeline and are kept only for history. The current pipeline is:
+>
+> - **Config** `00_config.R`: `gcms` + per-GCM `scenarios` matrix; tunables
+>   `clm_avg_years=30`, `clm_emit_step=1`, `pet_method="fao56"`, `phu_smooth_window=1`;
+>   crops derived from `crop_ls`. `enms`/`syears`/`eyears`/`ccal_years` removed.
+> - **Climate** `settings.sh` `CLIMATE_DIR`: colon-separated **search list** of official
+>   ISIMIP roots (3b primary+secondary, 3a obsclim/spinclim). Files discovered by
+>   globbing; ensemble member/scenario/year-range read from file names. Cells = the
+>   67420 GGCMI mask in `ggcmi_landcells.csv`.
+> - **Stage 01** `01_compute_annual_calendars.R` (replaces 01a+01b): one job per
+>   (GCM, scenario); 30-yr ring buffer; emits annual per-crop calendars. ~24 GB RAM,
+>   one node, `mclapply` over cells. Future scenarios seed from historical; opt-in
+>   `SAVE_SEED`. Submit: `01_compute_annual_calendars.sh`.
+> - **Stage 02** `02_assemble_annual_ncdf.R` (replaces old 02 + **04–07**): writes the
+>   DRS-compliant NetCDF in one pass (final names, 1601 time axis, ascending lat, fill
+>   values, chunking, publish path). Submit: `02_assemble_annual_ncdf.sh`.
+> - **Stage 03** `03_calc_phu_for_lpjml.R`: PHU per year (reads the DRS file).
+> - Open items: header-parity check vs the official ISIMIP reference; regime-shift
+>   ε-hysteresis; ISIMIP3a DRS soc/naming for GSWP3.
+
+## Context (historical — superseded window scheme)
 
 The `cropCalendars` R package was substantially revised on branch `fix-alg-vectorize-phu`
 during development at `/p/projects/landuse/LPJmL_for_MAgPIE/cropCalendars/`. The whole
@@ -199,6 +223,34 @@ scontrol release $(squeue -u heinke --state=PD | awk 'NR>1 {print $1}')
 ```
 Watch for jobs that go RUNNING → COMPLETING within seconds of starting — that is the
 failure, not normal completion.
+
+### Stage 02 seasonality / harv-reason encoding (FIXED)
+
+`generateCropCalTSerie_isimip3` previously encoded the `seasonality` and
+`harv-reason` ncdf variables with `as.numeric(as.factor(per-pixel vector))`. Because
+`as.factor` was applied **per pixel**, the integer code was alphabetical among only
+the levels present at that pixel — so every temporally-constant pixel mapped to code 1
+regardless of its actual type (≈94 % spurious `NO_SEASONALITY`; `harv-reason` collapsed
+to `GPmin`). The standalone avoided this by storing those DT columns as factors with
+**globally-fixed levels**. Fix: convert with fixed global level vectors
+(`season_levels`, `harvreason_levels`) so codes are consistent across the grid:
+`seasonality` 1=NoSeas 2=Prec 3=PrecTemp 4=Temp 5=TempPrec; `harv-reason`
+1=GPmin(hd_first) 2=GPmed(hd_maxrp) 3=GPmax(hd_last) 4=Wstress(hd_wetseas)
+5=Topt(hd_temp_base) 6=Thigh(hd_temp_opt). This changes ONLY those two variables;
+sowing/harvest dates are unaffected (jump detection depends on change-points, not the
+absolute code). After the fix the GFDL-ESM4/historical maize distribution matches the
+standalone (validated). Any ncdf produced before this fix must be regenerated (stage 02
+→ re-publish 04-07; stage 03 PHU is unaffected as it reads only plant-day/maty-day).
+
+### Stage 07 CDO segfault — must use `cdo -L`
+
+`07_fix_timeaxis.sh` calls CDO (2.4.4) `setreftime`/`settaxis`/`invertlat` on the
+NetCDF4 files. The cluster's NetCDF4/HDF5 library is **not thread-safe**, so CDO's
+default multi-threaded I/O **segfaults** (`cdi error (cdf_enddef): NetCDF: HDF error`,
+then a 2 KB stub file). The script masked this because a trailing `find -delete`
+returned exit 0. Both `cdo` calls now pass `-L` to serialise HDF5 access — this is
+mandatory here. Symptom of the bug: published files keep the stage-06 time axis
+(no `since 1601` reftime) and are ~2 KB instead of ~1.3 GB.
 
 ### Climate units (ISIMIP3b NetCDF)
 

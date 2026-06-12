@@ -72,55 +72,56 @@ Scripts live in `utils/ggcmi_ph3/`. All deployment-specific values (paths, SLURM
 account, derived output trees) are centralized in **`settings.sh`** — edit that one file
 when moving the pipeline; the `.sh` jobs `source` it and `00_config.R` parses it.
 
-Stages (run in order):
+The pipeline is an **annual sliding-window** scheme: for each year T the calendar is
+built from the preceding 30 years `[T-30, T-1]`, advanced one year at a time by a ring
+buffer — smooth and rule-consistent without any output smoothing. Stages (run in order):
 
 | Stage | Script | Does | Needs |
 |---|---|---|---|
-| config | `00_config.R` | sourced by 1a–3; reads `settings.sh`, crop lists | R + package |
-| 1a | `01a_calc_monthly_climate.{R,sh}` | cache crop-independent monthly climate per GCM×scenario×window, for **all climate land cells** | R + package |
-| 1b | `01b_calc_crop_calendars.{R,sh}` | crop calendars per crop from the 1a cache → `DT/*.Rdata` | R + package |
-| 2 | `02_generate_crop_cal_timeseries.{R,sh}` | assemble time series → NetCDF | R + package, AgMIP ref. |
-| 3 | `03_calc_phu_for_lpjml.{R,sh}` | PHUs for LPJmL → NetCDF (`.clm`) | R + package, `.clm` climate, **`lpjmlkit`** (LPJmL grid) |
-| 4 | `04_move_and_rename.sh` | rename to ISIMIP3b DRS layout | **NCO** (`ncrename`) |
-| 5–7 | `05_fix_missval.sh`, `06_fix_chunks.sh`, `07_fix_timeaxis.sh` | fix `missing_value`, chunking, time axis | **NCO / CDO** |
+| config | `00_config.R` | reads `settings.sh`; `gcms`/`scenarios` matrix; tunables (`clm_avg_years`, `clm_emit_step`, `pet_method`, `phu_smooth_window`) | R + package |
+| 1 | `01_compute_annual_calendars.{R,sh}` | one job per (GCM, scenario): stream climate once into a 30-yr ring → annual per-crop calendars (67420 GGCMI cells via `ggcmi_landcells.csv`) | R + package |
+| 2 | `02_assemble_annual_ncdf.{R,sh}` | per (GCM, scen, crop, irri): GGCMI default-replacement → **publication-ready ISIMIP3b DRS NetCDF** (final names, 1601 time axis, ascending lat, fill values, chunking, publish path) | R + package, AgMIP ref. |
+| 3 | `03_calc_phu_for_lpjml.{R,sh}` | PHUs for LPJmL → `.clm` (reads the DRS file) | R + package, `.clm` climate, **`lpjmlkit`** (LPJmL grid) |
 
-The R driver scripts (1a–3) are submitted with `sbatch` via the matching `.sh`, but the
-`.R` files themselves run standalone — a single test case is two steps (1a caches the
-monthly climate, 1b computes one crop from it):
+There are no NCO/CDO post-processing stages — the DRS standardisation is done in the
+stage-02 R write. (The legacy window-scheme scripts `01a`/`01b`/
+`02_generate_crop_cal_timeseries`/`04`–`07` are superseded.)
+
+Climate files are **discovered** by globbing the official ISIMIP roots listed in
+`settings.sh` `CLIMATE_DIR` (a colon-separated search list): ISIMIP3b
+primary+secondary for the ESMs, ISIMIP3a obsclim/spinclim for the observational
+forcings. The ensemble member, scenario tag and year range are read from the file
+names — no hardcoded year/member tables.
+
+The `.R` drivers run standalone (submitted with `sbatch` via the matching `.sh`):
 
 ```bash
 cd utils/ggcmi_ph3
-Rscript --vanilla 01a_calc_monthly_climate.R GFDL-ESM4 historical 1991        # -> cache
-Rscript --vanilla 01b_calc_crop_calendars.R GFDL-ESM4 historical Maize 1991   # -> DT
+Rscript --vanilla 01_compute_annual_calendars.R GFDL-ESM4 historical 8   # -> annual calendars (8 cores)
+Rscript --vanilla 02_assemble_annual_ncdf.R     GFDL-ESM4 historical mai ir   # -> DRS NetCDF
 # Run from this dir; work_dir = getwd().
 ```
 
-Beyond the package, the pipeline R scripts also use: `abind`, `foreach`, `doParallel`,
-`zoo`. NetCDF post-processing (stages 4–7) requires the **NCO** and **CDO** command-line
-tools on `PATH`.
-
-Toolchain setup is centralized in **`env.sh`**, which defines two functions:
-`load_r_env` (R + packages; stages 01–03) and `load_nco_cdo_env` (NCO + CDO; stages
-04–07). Each `.sh` sources `env.sh` and calls the one it needs. On the PIK cluster these
-are two separate module sets — R comes from the `piam` module set, which does **not**
-include `nco`/`cdo`, so those are loaded separately. To run elsewhere, edit the two
-function bodies.
+Beyond the package, the pipeline R scripts also use: `abind`, `foreach`, `zoo`, and
+`ncdf4`. Toolchain setup is centralized in **`env.sh`** (`load_r_env`: R + packages from
+the PIK `piam` module set). To run elsewhere, edit that function body.
 
 ## Running outside the PIK cluster
 
 The package layer needs nothing special. The **pipeline** assumes a PIK environment in a
 few concrete places — to run it elsewhere, replace each:
 
-- **Job scheduler.** `01/02/03_*.sh` submit with `sbatch` (`-A $ACCOUNT`, `--qos=standby`,
+- **Job scheduler.** `01/02/03_*.sh` submit with `sbatch` (`-A $ACCOUNT`, `--qos`,
   `--chdir`). Without SLURM, run the `.R` files directly with `Rscript` (see above), or
-  adapt the wrappers to your scheduler. Stages 4–7 are plain bash loops (no scheduler).
-- **Environment modules.** Toolchain loading lives in `env.sh` (`load_r_env` /
-  `load_nco_cdo_env`). Off-cluster, replace the function bodies with however you provide
-  R and NCO/CDO (e.g. conda: `conda install -c conda-forge nco cdo`), or empty them if the
-  tools are already on `PATH`.
+  adapt the wrappers to your scheduler.
+- **Environment modules.** Toolchain loading lives in `env.sh` (`load_r_env`).
+  Off-cluster, replace the function body with however you provide R + the packages
+  (e.g. conda), or empty it if R is already on `PATH`. (No NCO/CDO needed any more —
+  the DRS NetCDF is written directly in stage 02.)
 - **Input datasets**, currently expected at the paths in `settings.sh` / `00_config.R`:
-  - `CLIMATE_DIR` — ISIMIP3b daily climate NetCDF (`tas`, `pr`, `rsds`, `rlds`, `huss`,
-    `sfcwind`, `ps`).
+  - `CLIMATE_DIR` — colon-separated search list of climate roots (ISIMIP layout
+    `<root>/<scenario>/<gcm>/*_<var>_global_daily_<y0>_<y1>.nc`): daily `tas`, `pr`,
+    `rsds`, `rlds`, `huss`, `sfcwind`, `ps`. Discovered by globbing.
   - `ISIMIP3B_PATH` — ISIMIP3b `.clm` binary climate, read by `get.isimip.tas()` in the
     PHU stage. This reader assumes the LPJmL `.clm` format and file naming.
   - `AGMIP_DIR` — AgMIP reference crop calendars (NetCDF), used by stage 2.
