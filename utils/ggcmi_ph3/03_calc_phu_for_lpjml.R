@@ -66,16 +66,16 @@ if (scen == "2015gs") {
 } else if (scen == "historical") {
 
   # first and last year of ncdf files
-  FYnc <- 1881
+  FYnc <- 1850
   LYnc <- 2014
 
-  # Sowing and cultivar to change every 10 years
-  SYs <-   seq(1881, 2011, by = 10) # Start of the period
-  EYs <- c(seq(1890, 2014, by = 10), 2014) # End of the period
-  # Computing sowing and harvest dates based on preceding 30-years climate
-  FYs <-   seq(1851, 1981, by = 10) # First year DT file (output of main.R)
-  LYs <-   seq(1880, 2010, by = 10) # Last  year DT file (output of main.R)
-
+  # Application periods and the 30-yr DT window (FYs-LYs) each uses. Matches the
+  # standalone pipeline so the product starts at 1850 (first four periods reuse the
+  # 1850-1879 window as proxy; last three use the reference-period windows).
+  SYs <- c(1850, 1860, 1870, 1880, 1890, 1900, 1910, 1920, 1930, 1940, 1950, 1960, 1970, 1980, 1991, 2001, 2011)
+  EYs <- c(1859, 1869, 1879, 1889, 1899, 1909, 1919, 1929, 1939, 1949, 1959, 1969, 1979, 1990, 2000, 2010, 2014)
+  FYs <- c(1850, 1850, 1850, 1850, 1860, 1870, 1880, 1890, 1900, 1910, 1920, 1930, 1940, 1950, 1961, 1971, 1981)
+  LYs <- c(1879, 1879, 1879, 1879, 1889, 1899, 1909, 1919, 1929, 1939, 1949, 1959, 1969, 1979, 1990, 2000, 2010)
   HYs <- rep(scen, length(SYs))
 
 } else {

@@ -11,8 +11,8 @@ source "$(dirname "$(readlink -f "$0")")/env.sh"
 load_r_env
 
 # GCM, scenario, crops, irrigations
-gcms=('GFDL-ESM4' 'IPSL-CM6A-LR' 'MPI-ESM1-2-HR' 'MRI-ESM2-0' 'UKESM1-0-LL')
-scens=('ssp585' 'ssp370' 'ssp126' 'historical' '2015gs' 'picontrol')
+gcms=('GFDL-ESM4')
+scens=('historical')
 crops=('wwh' 'swh' 'mai' 'ri1' 'ri2' 'soy' 'mil' 'sor' 'pea' 'sgb' 'cas' 'rap' 'sun' 'nut' 'sgc')
 irrigs=('rf' 'ir')
 

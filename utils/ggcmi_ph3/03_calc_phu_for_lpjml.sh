@@ -10,8 +10,8 @@ wd=$WD
 source "$(dirname "$(readlink -f "$0")")/env.sh"
 load_r_env
 
-gcms=('GFDL-ESM4' 'IPSL-CM6A-LR' 'MPI-ESM1-2-HR' 'MRI-ESM2-0' 'UKESM1-0-LL')
-scens=('historical' 'ssp585' 'ssp370' 'ssp126' '2015gs')
+gcms=('GFDL-ESM4')
+scens=('historical')
 crops=('wwh' 'swh' 'mai' 'ri1' 'ri2' 'soy' 'mil' 'sor' 'pea' 'sgb' 'cas' 'rap' 'sun' 'nut' 'sgc')
 irrigs=('rf' 'ir')
 
