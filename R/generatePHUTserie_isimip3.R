@@ -12,14 +12,24 @@ generatePHUTserie_isimip3 <- function(
     EYs           = NULL,
     FYnc          = NULL,
     LYnc          = NULL,
-    crop_par_file = NULL
+    crop_par_file = NULL,
+    ncfile        = NULL,
+    smooth_window = 1L
 
 ) {
+  # smooth_window (years, odd, default 1): widens ONLY the temperature averaging
+  # used for the heat-unit sum, centred on each period, clamped to [FYnc, LYnc].
+  # With 1 (default) the PHU matches the growing period of that period exactly (the
+  # original behaviour); larger values damp single-year weather noise in the PHU of
+  # the annual product without changing the (already smooth) sowing/harvest dates.
+  half <- (as.integer(smooth_window) - 1L) %/% 2L
 
   cr <- which(crop_ls[["ggcmi"]] == cro)
   ir <- which(irri_ls[["ggcmi"]] == irri)
 
-  ncfname <- paste0(ncdir,
+  # Read the DRS crop-calendar file directly if its path is supplied (annual
+  # pipeline), otherwise reconstruct the legacy intermediate name under ncdir.
+  ncfname <- if (!is.null(ncfile)) ncfile else paste0(ncdir,
                     crop_ls[["ggcmi"]][cr], "_", irri_ls[["ggcmi"]][ir],
                     "_", gcm, "_", scen, "_", FYnc, "-", LYnc,
                     "_ggcmi_ph3_rule_based_crop_calendar.nc4")
@@ -71,13 +81,16 @@ generatePHUTserie_isimip3 <- function(
 
     # --------------------------------------------------#
     # Climate: accumulate year-by-year to cap peak RAM ----
+    # Temperature window = the period, widened by `half` years each side for
+    # smoothing (clamped to the product range). half = 0 -> exactly the period.
+    w_lo <- max(FYnc, SYs[yy] - half); w_hi <- min(LYnc, EYs[yy] + half)
     tas_sum <- matrix(0.0, NCELLS, 365L)
-    for (yr in SYs[yy]:EYs[yy]) {
+    for (yr in w_lo:w_hi) {
       tas_yr  <- get.isimip.tas(gcm, scen, yr, yr)
       tas_sum <- tas_sum + tas_yr[, , 1L]
       rm(tas_yr)
     }
-    tas_mean_day <- tas_sum / length(SYs[yy]:EYs[yy])
+    tas_mean_day <- tas_sum / length(w_lo:w_hi)
     rm(tas_sum)
 
     # --------------------------------------------------#
@@ -85,8 +98,8 @@ generatePHUTserie_isimip3 <- function(
     nc    <- nc_open(ncfname)
     sy    <- which(years == SYs[yy])
     nyp   <- length(SYs[yy]:EYs[yy])
-    sdate <- ncvar_get(nc, "plant-day", start = c(1, 1, sy), count = c(720, 360, nyp))
-    hdate <- ncvar_get(nc, "maty-day",  start = c(1, 1, sy), count = c(720, 360, nyp))
+    sdate <- ncvar_get(nc, "planting_day", start = c(1, 1, sy), count = c(720, 360, nyp))
+    hdate <- ncvar_get(nc, "maturity_day", start = c(1, 1, sy), count = c(720, 360, nyp))
     nc_close(nc)
 
     sdate_cells <- matrix(sdate, nrow = 720L * 360L)[lin_idx, , drop = FALSE]

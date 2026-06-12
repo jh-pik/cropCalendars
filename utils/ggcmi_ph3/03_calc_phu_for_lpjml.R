@@ -48,59 +48,35 @@ scen   <- args[2]
 cro    <- args[3]
 irri   <- args[4]
 
-if (scen == "2015gs") {
+# Product year range (annual product), per scenario.
+prod_range <- list("historical" = c(1850, 2014), "picontrol" = c(1601, 2100),
+                   "ssp119" = c(2015, 2100), "ssp126" = c(2015, 2100),
+                   "ssp245" = c(2015, 2100), "ssp370" = c(2015, 2100),
+                   "ssp460" = c(2015, 2100), "ssp585" = c(2015, 2100))[[scen]]
+FYnc <- prod_range[1]; LYnc <- prod_range[2]
 
-  FYnc <- 2015 # first year ncdf output file
-  LYnc <- 2100 # last year ncdf output file
-
-  # Sowing and cultivar to change every 10 years
-  SYs <- 2015 # Start of the period
-  EYs <- 2020 # End of the period
-  # Computing sowing and harvest dates based on preceding 30-years climate
-  FYs <- 1981 # First year DT file (output of main.R)
-  LYs <- 2010 # Last  year DT file (output of main.R)
-
-  nhist <- length(EYs[EYs < 2015]) # number of historical time slices
-  HYs <- c(rep("historical", nhist), rep("ssp126", length(SYs)-nhist)) # historical/ssp years
-
-} else if (scen == "historical") {
-
-  # first and last year of ncdf files
-  FYnc <- 1850
-  LYnc <- 2014
-
-  # Application periods and the 30-yr DT window (FYs-LYs) each uses. Matches the
-  # standalone pipeline so the product starts at 1850 (first four periods reuse the
-  # 1850-1879 window as proxy; last three use the reference-period windows).
-  SYs <- c(1850, 1860, 1870, 1880, 1890, 1900, 1910, 1920, 1930, 1940, 1950, 1960, 1970, 1980, 1991, 2001, 2011)
-  EYs <- c(1859, 1869, 1879, 1889, 1899, 1909, 1919, 1929, 1939, 1949, 1959, 1969, 1979, 1990, 2000, 2010, 2014)
-  FYs <- c(1850, 1850, 1850, 1850, 1860, 1870, 1880, 1890, 1900, 1910, 1920, 1930, 1940, 1950, 1961, 1971, 1981)
-  LYs <- c(1879, 1879, 1879, 1879, 1889, 1899, 1909, 1919, 1929, 1939, 1949, 1959, 1969, 1979, 1990, 2000, 2010)
-  HYs <- rep(scen, length(SYs))
-
-} else {
-
-  FYnc <- 2015 # first year ncdf output file
-  LYnc <- 2100 # last year ncdf output file
-
-  # Sowing and cultivar to change every 10 years
-  SYs <- c(2015, seq(2021, 2091, by = 10)) # Start of the period
-  EYs <- c(2020, seq(2030, 2100, by = 10)) # End of the period
-  # Computing sowing and harvest dates based on preceding 30-years climate
-  FYs <- seq(1981, 2061, by = 10) # First year DT file (output of main.R)
-  LYs <- seq(2010, 2090, by = 10) # Last  year DT file (output of main.R)
-
-  nhist <- length(EYs[EYs < 2015]) # number of historical time slices
-  HYs <- c(rep("historical", nhist), rep(scen, length(SYs)-nhist)) # historical/ssp years
-
-}
-
-print(data.frame(SYs, EYs, FYs, LYs, HYs, FYnc, LYnc))
+# Annual product: one "period" per year, so the PHU matches each year's growing
+# period exactly. PHU_SMOOTH_WINDOW (default 1) optionally widens the temperature
+# averaging only. LYs is a global read by generatePHUTserie (= LYnc skips the
+# legacy 2015gs branch).
+SYs <- FYnc:LYnc; EYs <- FYnc:LYnc; LYs <- LYnc
+smooth_window <- as.integer(Sys.getenv("PHU_SMOOTH_WINDOW", as.character(phu_smooth_window)))
+cat(sprintf("PHU: %s %s %s_%s | years %d-%d | smooth_window=%d\n",
+            gcm, scen, cro, irri, FYnc, LYnc, smooth_window))
 
 years  <- FYnc:LYnc
 nyears <- length(years)
 
-ncdir  <- paste0(output_dir, "crop_calendars/ncdf/", gcm, "/", scen, "/")
+ncdir  <- paste0(output_dir, "crop_calendars/ncdf/", gcm, "/", scen, "/")  # PHU .nc4 output
+if (!dir.exists(ncdir)) dir.create(ncdir, recursive = TRUE)
+
+# DRS crop-calendar file to read (output of stage 02).
+soc_dir  <- if (scen == "historical") "historical" else paste0(scen, "soc-adapt")
+soc_file <- if (scen == "historical") "histsoc" else scen
+irr_tok  <- if (irri == "ir") "firr" else "noirr"
+ncfile   <- paste0(output_dir, "ISIMIP3b/InputData/socioeconomic/crop_calendar/", gcm, "/", soc_dir,
+                   "/ggcmi-crop-calendar_", tolower(gcm), "_", soc_file, "_", cro, "-", irr_tok,
+                   "_annual_", FYnc, "_", LYnc, ".nc")
 
 # ------------------------------------------------------#
 # Compute PHUs and Write ncdfs
@@ -115,7 +91,9 @@ generatePHUTserie_isimip3(
     EYs           = EYs,
     FYnc          = FYnc,
     LYnc          = LYnc,
-    crop_par_file = NULL
+    crop_par_file = NULL,
+    ncfile        = ncfile,
+    smooth_window = smooth_window
 )
 
 # ------------------------------------------------------#
