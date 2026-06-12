@@ -68,14 +68,14 @@ scens <- c(
 )
 syears <- list(
   "picontrol"  = seq(1601, 2091, by = 10),
-  "historical" = seq(1851, 2011, by = 10),
+  "historical" = c(1850, seq(1851, 2011, by = 10)), # incl. the 1850 (single-year) file
   "ssp126"     = c(2015, seq(2021, 2091, by = 10)),
   "ssp585"     = c(2015, seq(2021, 2091, by = 10)),
   "ssp370"     = c(2015, seq(2021, 2091, by = 10))
 )
 eyears <- list(
   "picontrol"  = seq(1610, 2100, by = 10),
-  "historical" = c(seq(1860, 2014, by = 10), 2014),
+  "historical" = c(1850, seq(1860, 2014, by = 10), 2014), # incl. the 1850 file
   "ssp126"     = seq(2020, 2100, by = 10),
   "ssp585"     = seq(2020, 2100, by = 10),
   "ssp370"     = seq(2020, 2100, by = 10)
