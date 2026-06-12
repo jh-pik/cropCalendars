@@ -93,7 +93,7 @@ generateCropCalTSerie_isimip3 <- function(
       # Create a DT template for crops that aren't simulated by the rule-based
       #  approach and for which we assume GGCMI ph2 approach (regain original GS)
       #   Take crop calendar DT.Rdata file of crop 1
-      fname <- paste0(paste0(output_dir, HYs[1], "/"),
+      fname <- paste0(paste0(output_dir, HYs[1], "/", gcm, "/"),
                       "DT_output_crop_calendars_", crop_ls[["rb_cal"]][1],
                       "_", gcm, "_", HYs[1], "_", FYs[1], "_", LYs[1], ".Rdata")
       DT <- get(load(fname))
