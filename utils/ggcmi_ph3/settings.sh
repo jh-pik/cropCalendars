@@ -21,8 +21,16 @@ ACCOUNT=landuse
 # Output root: where results are written (keep trailing slash).
 OUTPUT_DIR=/p/projects/macmit/users/heinke/crop_calendars/output/
 
-# Climate inputs, read-only (keep trailing slash).
-CLIMATE_DIR=/p/projects/macmit/data/GGCMI/phase3/input_land_only_v2/
+# Climate input roots, read-only. Colon-separated SEARCH LIST (no trailing slash):
+# the annual driver discovers each <root>/<scenario>/<gcm>/*_<var>_global_daily_*.nc
+# and uses the first root that has the files. Official ISIMIP roots only:
+#   ISIMIP3b primary + secondary  -> the ESMs (all SSPs, historical, picontrol);
+#   ISIMIP3a obsclim + spinclim   -> the observational forcings (GSWP3-W5E5 etc.):
+#     scenarios are named directly "obsclim"/"spinclim" (files under "historical").
+# The GGCMI land mask (ggcmi_landcells.csv, 67420 cells) is applied uniformly, so the
+# full-grid official files are subset to the same cells (the ISIMIP no-ant mask is a
+# subset of these, and GSWP3-W5E5 covers all 67420).
+CLIMATE_DIR=/p/projects/isimip/isimip/ISIMIP3b/InputData/climate/atmosphere/bias-adjusted/global/daily:/p/projects/isimip/isimip/ISIMIP3b/SecondaryInputData/climate/atmosphere/bias-adjusted/global/daily:/p/projects/isimip/isimip/ISIMIP3a/InputData/climate/atmosphere/obsclim/global/daily:/p/projects/isimip/isimip/ISIMIP3a/InputData/climate/atmosphere/spinclim/global/daily
 
 # ISIMIP3b .clm climate path used by generatePHUTserie_isimip3 (keep trailing slash).
 ISIMIP3B_PATH=/p/projects/lpjml/input/scenarios/ISIMIP3bv2/

@@ -34,52 +34,48 @@ parallel     <- TRUE
 cluster_job  <- TRUE
 plot_results <- TRUE
 
-# Years for which crop calendars should be computed
-ccal_years    <- seq(1601, 2091, by = 10)
-# Number of years for average climate
-clm_avg_years <- 30
+# ------------------------------------ #
+# Tunable parameters (annual sliding-window pipeline). The env vars EMIT_STEP and
+# PHU_SMOOTH_WINDOW override clm_emit_step / phu_smooth_window for ad-hoc runs.
+clm_avg_years     <- 30       # climate-averaging window length (years)
+clm_emit_step     <- 1        # compute calendars every N years (1 = fully annual)
+pet_method        <- "fao56"  # PET: "fao56" (Penman-Monteith) or "pt" (Priestley-Taylor)
+phu_smooth_window <- 1        # PHU temperature-averaging window (years; 1 = period-exact)
 
-climate_dir   <- .settings$CLIMATE_DIR
+climate_dirs  <- sub("/+$", "", strsplit(.settings$CLIMATE_DIR, ":")[[1]])  # search list
+climate_dir   <- climate_dirs[1]                                            # legacy (stage 01a)
 isimip3b.path <- .settings$ISIMIP3B_PATH # .clm climate
 agmip_dir     <- .settings$AGMIP_DIR     # AgMIP reference crop calendars (used in 02)
 grid_file     <- .settings$GRID_BIN      # LPJmL grid path; read only in 03 (.clm writing)
 
-# Climate input files
+# Climate input forcings (ESMs + the GSWP3-W5E5 observational forcing).
 gcms <- c(
+  "GSWP3-W5E5",
   "GFDL-ESM4",
   "IPSL-CM6A-LR",
   "MPI-ESM1-2-HR",
   "MRI-ESM2-0",
   "UKESM1-0-LL"
 )
-enms <- c(
-    "GFDL-ESM4"     = "r1i1p1f1",
-    "IPSL-CM6A-LR"  = "r1i1p1f1",
-    "MPI-ESM1-2-HR" = "r1i1p1f1",
-    "MRI-ESM2-0"    = "r1i1p1f1",
-    "UKESM1-0-LL"   = "r1i1p1f2"
+
+# Scenarios available per forcing -- the (GCM x scenario) processing matrix.
+scenarios <- list(
+  "GSWP3-W5E5"    = c("spinclim", "obsclim"),
+  "GFDL-ESM4"     = c("historical", "ssp126", "ssp245", "ssp370", "ssp585"),
+  "IPSL-CM6A-LR"  = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", "ssp585"),
+  "MPI-ESM1-2-HR" = c("historical", "ssp126", "ssp245", "ssp370", "ssp585"),
+  "MRI-ESM2-0"    = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", "ssp585"),
+  "UKESM1-0-LL"   = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp585")
 )
-scens <- c(
-  "picontrol",
-  "historical",
-  "ssp126",
-  "ssp585",
-  "ssp370"
-)
-syears <- list(
-  "picontrol"  = seq(1601, 2091, by = 10),
-  "historical" = c(1850, seq(1851, 2011, by = 10)), # incl. the 1850 (single-year) file
-  "ssp126"     = c(2015, seq(2021, 2091, by = 10)),
-  "ssp585"     = c(2015, seq(2021, 2091, by = 10)),
-  "ssp370"     = c(2015, seq(2021, 2091, by = 10))
-)
-eyears <- list(
-  "picontrol"  = seq(1610, 2100, by = 10),
-  "historical" = c(1850, seq(1860, 2014, by = 10), 2014), # incl. the 1850 file
-  "ssp126"     = seq(2020, 2100, by = 10),
-  "ssp585"     = seq(2020, 2100, by = 10),
-  "ssp370"     = seq(2020, 2100, by = 10)
-)
+# Union of all scenarios, used to build the file-window lists below.
+scens <- sort(unique(unlist(scenarios, use.names = FALSE)))
+
+# NB: ensemble members and the per-scenario climate-file year windows are no longer
+# hardcoded. The annual pipeline (01_compute_annual_calendars.R) discovers the
+# climate files by globbing <CLIMATE_DIR>/<scenario>/<gcm>/ and reads the ensemble
+# member, scenario tag and year range straight from the file names, so new datasets
+# or scenarios need no config edits. (The legacy stage 01a -- now superseded by
+# 01_compute_annual_calendars.R -- was the only consumer of enms/syears/eyears.)
 
 # NB: the LPJmL grid is NOT read here. 01a/01b/02 work on the climate land mask; only
 # stage 03 (writing the .clm files) needs the LPJmL grid, and reads it there.

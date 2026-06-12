@@ -74,7 +74,9 @@ for (j in seq_len(npix)) {
                mppet      = MPPET[j, ],
                mppet_diff = MPPET_DIFF[j, ],
                dtemp      = DTEMP[j, ],
-               dppet      = DPPET[j, ])
+               dppet      = DPPET[j, ],
+               dprec      = DPREC[j, ],
+               dpet       = DPET[j, ])
 
   ccal_list[[j]] <- calcCropCalendars(
     lon      = grid_clm$lon[j],

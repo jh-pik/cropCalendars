@@ -189,10 +189,12 @@ MPPET      <- mclm$mppet[keep, , drop = FALSE]
 MPPET_DIFF <- mclm$mppet_diff[keep, , drop = FALSE]
 DTEMP      <- mclm$dtemp[keep, , drop = FALSE]
 DPPET      <- mclm$dppet[keep, , drop = FALSE]
+DPREC      <- mclm$dprec[keep, , drop = FALSE]
+DPET       <- mclm$dpet[keep, , drop = FALSE]
 
 fnout <- paste0(clm_dir, "monthly_climate_", gcm, "_", scen, "_", syear, "_", eyear, ".Rdata")
 cat("\nSaving monthly-climate cache:\n", fnout, "\n")
-save(grid_clm, MTEMP, MPREC, MPET, MPPET, MPPET_DIFF, DTEMP, DPPET,
+save(grid_clm, MTEMP, MPREC, MPET, MPPET, MPPET_DIFF, DTEMP, DPPET, DPREC, DPET,
      gcm, scen, syear, eyear, file = fnout)
 cat("Cached pixels: ", nrow(grid_clm), "\n")
 
