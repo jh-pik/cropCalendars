@@ -21,9 +21,7 @@ calcHarvestRule <- function(croppar,
                             ) {
 
   # extract individual parameter names and values
-  for(i in colnames(croppar)) {
-    assign(i, croppar[[i]])
-  }
+  list2env(croppar, environment())  # 1-row data.frame: columns -> scalar params
 
   temp_max <- max(monthly_temp)
   temp_min <- min(monthly_temp)

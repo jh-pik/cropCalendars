@@ -46,7 +46,10 @@
 #'   \item{dtemp}{Climatological daily mean temperature (°C), one value per
 #'     DOY 1–365, averaged across years. Used by \code{calcDoyCrossThreshold}.}
 #'   \item{dppet}{Climatological daily P/PET ratio, one value per DOY 1–365,
-#'     averaged across years. Used by \code{calcDoyWetMonth}.}
+#'     averaged across years.}
+#'   \item{dprec, dpet}{Climatological daily precipitation and PET (mm), one
+#'     value per DOY 1–365, averaged across years. Used by \code{calcDoyWetMonth}
+#'     and the wet-season-end harvest rule as a spike-free \eqn{\sum P / \sum PET}.}
 #' }
 #'
 #' @examples

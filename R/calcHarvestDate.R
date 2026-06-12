@@ -35,9 +35,7 @@ calcHarvestDate <- function(croppar,
                             ) {
 
   # Extract individual parameter names and values
-  for (i in colnames(croppar)) {
-    assign(i, croppar[[i]])
-  }
+  list2env(croppar, environment())  # 1-row data.frame: columns -> scalar params
 
   ndays_year <- 365
 

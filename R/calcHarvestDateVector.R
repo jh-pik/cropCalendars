@@ -9,6 +9,13 @@
 #' Grain filling in warmest period (mid. t.);
 #' Escape high temperature (high t.).
 #'
+#' The temperature- and water-driven harvest dates (\code{hd_wetseas},
+#' \code{hd_temp_base}, \code{hd_temp_opt}) are evaluated on the \emph{daily}
+#' climatology, consistent with \code{calcSowingDate}. Evaluating them on the
+#' 12 monthly values instead quantises these dates to whole months, which makes
+#' the resulting harvest dates flip by ~30 days between climate windows (e.g.
+#' when the warmest month alternates between July and August).
+#'
 #' @param croppar data.frame with crop parematers as returned by getCropParam
 #' @param sowing_date numeric value as day of the year (DOY). This can be either
 #' caculated with calcSowingDate or prescribed.
@@ -19,6 +26,17 @@
 #' @param monthly_ppet numeric vestor of length 12. Mean Potential Evapotranspiration (mm). See caclMonthlyClimate.
 #' @param monthly_ppet_diff numeric vestor of length 12. Mean difference of
 #' Potential Evapotranspiration (mm). See caclMonthlyClimate.
+#' @param daily_temp numeric vector of length 365. Climatological daily mean
+#' temperature (deg C), one value per DOY (the \code{dtemp} element from
+#' \code{calcMonthlyClimate}). If \code{NULL}, it is interpolated from
+#' \code{monthly_temp}.
+#' @param daily_prec numeric vector of length 365. Climatological daily
+#' precipitation (mm) per DOY (the \code{dprec} element from
+#' \code{calcMonthlyClimate}). Used with \code{daily_pet} to form the spike-free
+#' daily P/PET (ratio of per-DOY means) for the wet-season-end crossing. If
+#' \code{NULL}, the daily P/PET is interpolated from \code{monthly_ppet} instead.
+#' @param daily_pet numeric vector of length 365. Climatological daily PET (mm)
+#' per DOY (the \code{dpet} element from \code{calcMonthlyClimate}).
 #'
 #' @seealso getCropParam, calcMonthlyClimate, calcSowingDate, calcCropCalendars
 #' @export
@@ -27,16 +45,32 @@ calcHarvestDateVector <- function(croppar,
                                   sowing_season,
                                   monthly_temp,
                                   monthly_ppet,
-                                  monthly_ppet_diff
+                                  monthly_ppet_diff,
+                                  daily_temp = NULL,
+                                  daily_prec = NULL,
+                                  daily_pet  = NULL
                                   ) {
 
   # Extract individual parameter names and values
-  for(i in colnames(croppar)) {
-    assign(i, croppar[[i]])
-  }
+  list2env(croppar, environment())  # 1-row data.frame: columns -> scalar params
 
   ndays_year <- 365
-  midday     <- c(15, 43, 74, 104, 135, 165, 196, 227, 257, 288, 318, 349, 380)
+
+  # Daily climatologies (one value per DOY 1:365). dtemp/dprec/dpet from the cache
+  # are already on this grid; fall back to interpolating the monthly values.
+  if (is.null(daily_temp)) daily_temp <- .monthlyToDoy365(monthly_temp)
+  # Spike-free daily P/PET for the wet-season-end crossing: the ratio of the
+  # per-DOY mean P and mean PET (never blows up — mean PET on a DOY is never ~0),
+  # unlike the mean of daily P/PET ratios. Fall back to the interpolated monthly
+  # ratio if the daily P and PET are not supplied.
+  if (!is.null(daily_prec) && !is.null(daily_pet)) {
+    daily_ppet <- daily_prec / pmax(daily_pet, 1e-6)
+  } else {
+    daily_ppet <- .monthlyToDoy365(monthly_ppet)
+  }
+  # The P/PET month-over-month difference has no daily counterpart in the cache,
+  # so it is interpolated onto the daily grid for a consistent crossing search.
+  daily_ppet_diff <- .monthlyToDoy365(monthly_ppet_diff)
 
   # Shortest cycle: crop lower biological limit
   hd_first <- sowing_date + min_growingseason
@@ -49,11 +83,11 @@ calcHarvestDateVector <- function(croppar,
 
   # End of wet season ----
   doy_wet1 <- calcDoyCrossThreshold(
-    monthly_ppet,
+    daily_ppet,
     ppet_ratio
     )[["doy_cross_down"]]
   doy_wet2 <- calcDoyCrossThreshold(
-    monthly_ppet_diff,
+    daily_ppet_diff,
     ppet_ratio_diff
     )[["doy_cross_down"]]
   doy_wet_vec <- ifelse(
@@ -78,15 +112,17 @@ calcHarvestDateVector <- function(croppar,
     hd_wetseas <- doy_wet_first + rphase_duration
   }
 
-  # Warmest day of the year ----
-  warmest_day <- midday[monthly_temp == max(monthly_temp)][1]
+  # Warmest period of the year ----
+  # Centre DOY of the warmest 30-day window of the daily climatology (the daily
+  # analogue of the previous "mid-day of the warmest month").
+  warmest_day <- .doyWarmestWindow(daily_temp, width = 30)
   hd_temp_base <- ifelse(
     sowing_season == "winter", warmest_day, warmest_day + rphase_duration
     )
 
   # First hot day ----
   doy_exceed_opt_rp <- calcDoyCrossThreshold(
-    monthly_temp, temp_opt_rphase
+    daily_temp, temp_opt_rphase
     )[["doy_cross_up"]]
   idx <- which(doy_exceed_opt_rp < sowing_date & doy_exceed_opt_rp != -9999)
   doy_exceed_opt_rp[idx] <- doy_exceed_opt_rp[idx] + ndays_year
@@ -94,7 +130,7 @@ calcHarvestDateVector <- function(croppar,
 
   # Last hot day ----
   doy_below_opt_rp <- calcDoyCrossThreshold(
-    monthly_temp,
+    daily_temp,
     temp_opt_rphase
     )[["doy_cross_down"]]
   idx <- which(doy_below_opt_rp < sowing_date & doy_below_opt_rp != -9999)
@@ -131,4 +167,22 @@ calcHarvestDateVector <- function(croppar,
                         "hd_wetseas", "hd_temp_base", "hd_temp_opt")
 
   return(hd_vector)
+}
+
+# Map 12 monthly values (referring to month mid-days) to a clean 365-element
+# vector indexed by DOY 1:365, via linear interpolation with Dec->Jan wrap.
+.monthlyToDoy365 <- function(monthly_value) {
+  d   <- interpolateMonthlyToDaily(monthly_value)
+  doy <- ((d[["x"]] - 1L) %% 365L) + 1L
+  # interpolateMonthlyToDaily covers each DOY (often twice, from the two-year
+  # replication); average duplicates and order by DOY.
+  as.numeric(tapply(d[["y"]], doy, mean)[as.character(1:365)])
+}
+
+# Centre DOY of the warmest `width`-day window of a daily (DOY-indexed)
+# climatology, evaluated circularly. Daily analogue of "warmest month mid-day".
+.doyWarmestWindow <- function(daily_value, width = 30) {
+  n     <- length(daily_value)
+  start <- which.max(.circRollSum(daily_value, width))  # first DOY of warmest window
+  ((start - 1L + width %/% 2L) %% n) + 1L                # centre DOY
 }

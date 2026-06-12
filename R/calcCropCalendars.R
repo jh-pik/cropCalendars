@@ -9,25 +9,33 @@
 #' @param crop A crop name (chr), among those specified in the croppar_file
 #' @param croppar_file Crop parameter file. If not specified, the default one is
 #' used.
+#' @param crop_parameters Optional pre-extracted crop-parameter row (one row
+#' \code{data.frame}, as returned by \code{getCropParam}). When supplied, the
+#' parameter file is not read — essential when calling this per cell in a loop
+#' (avoids re-reading the CSV on every call). \code{crop}/\code{croppar_file}
+#' are then ignored.
 #' @seealso calcMonthlyClimate
 #' @export
 
-calcCropCalendars <- function(lon          = NULL,
-                              lat          = NULL,
-                              mclimate     = NULL,
-                              crop         = NULL,
-                              croppar_file = NULL
+calcCropCalendars <- function(lon             = NULL,
+                              lat             = NULL,
+                              mclimate        = NULL,
+                              crop            = NULL,
+                              croppar_file    = NULL,
+                              crop_parameters = NULL
                               ) {
 
-  # Import crop parameters
-  if (is.null(croppar_file)) {
-    croppar_file <- system.file("extdata", "crop_parameters.csv",
-                                package = "cropCalendars", "mustWork" = TRUE)
+  # Import crop parameters (unless already supplied by the caller).
+  if (is.null(crop_parameters)) {
+    if (is.null(croppar_file)) {
+      croppar_file <- system.file("extdata", "crop_parameters.csv",
+                                  package = "cropCalendars", "mustWork" = TRUE)
+    }
+    crop_parameters <- getCropParam(
+      crops          = crop,
+      cropparam_file = croppar_file
+    )
   }
-  crop_parameters <- getCropParam(
-    crops          = crop,
-    cropparam_file = croppar_file
-  )
 
   # Get weather data of the grid cell
   mtemp      <- mclimate$mtemp
@@ -35,7 +43,8 @@ calcCropCalendars <- function(lon          = NULL,
   mppet      <- mclimate$mppet
   mppet_diff <- mclimate$mppet_diff
   dtemp      <- mclimate$dtemp
-  dppet      <- mclimate$dppet
+  dprec      <- mclimate$dprec
+  dpet       <- mclimate$dpet
 
   # Seasonality type
   seasonality <- calcSeasonality(
@@ -48,7 +57,8 @@ calcCropCalendars <- function(lon          = NULL,
   sowing <- calcSowingDate(
     croppar      = crop_parameters,
     monthly_temp = mtemp,
-    daily_ppet   = dppet,
+    daily_prec   = dprec,
+    daily_pet    = dpet,
     daily_temp   = dtemp,
     seasonality  = seasonality,
     lat          = lat
@@ -72,7 +82,10 @@ calcCropCalendars <- function(lon          = NULL,
     sowing_season     = sowing_season,
     monthly_temp      = mtemp,
     monthly_ppet      = mppet,
-    monthly_ppet_diff = mppet_diff
+    monthly_ppet_diff = mppet_diff,
+    daily_temp        = dtemp,
+    daily_prec        = dprec,
+    daily_pet         = dpet
   )
 
   harvest <- calcHarvestDate(

@@ -34,6 +34,10 @@ initMonthlyClimate <- function(ncells, pet_method = c("fao56", "pt")) {
     M_tas  = matrix(0, ncells, 12),  M_pr   = matrix(0, ncells, 12),
     M_pet  = matrix(0, ncells, 12),  M_ppet = matrix(0, ncells, 12),
     D_tsum = matrix(0, ncells, 365), D_psum = matrix(0, ncells, 365),
+    # Separate daily P and PET sums so the wet-season rules can use a spike-free
+    # ratio-of-sums (ΣP/ΣPET) instead of the mean of daily P/PET ratios, which
+    # blows up on the rare day where PET ≈ 0.
+    D_prsum  = matrix(0, ncells, 365), D_petsum = matrix(0, ncells, 365),
     D_cnt  = numeric(365), nyears = 0L,
     pet_method = pet_method, ncells = ncells
   )
@@ -91,8 +95,10 @@ addYearMonthlyClimate <- function(acc, temp, prec, dates,
   # A DOY can recur within a leap year (Feb 29 -> 59), so accumulate sum and count.
   for (k in seq_len(ncol(temp))) {
     d <- doy[k]
-    acc$D_tsum[, d] <- acc$D_tsum[, d] + temp[, k]
-    acc$D_psum[, d] <- acc$D_psum[, d] + ppet[, k]
+    acc$D_tsum[,   d] <- acc$D_tsum[,   d] + temp[, k]
+    acc$D_psum[,   d] <- acc$D_psum[,   d] + ppet[, k]
+    acc$D_prsum[,  d] <- acc$D_prsum[,  d] + prec[, k]
+    acc$D_petsum[, d] <- acc$D_petsum[, d] + pet[,  k]
   }
   acc$D_cnt  <- acc$D_cnt + tabulate(doy, nbins = 365)
   acc$nyears <- acc$nyears + 1L
@@ -108,11 +114,14 @@ finalizeMonthlyClimate <- function(acc) {
   mpet       <- round(acc$M_pet  / acc$nyears, 5)
   mppet      <- round(acc$M_ppet / acc$nyears, 5)
   mppet_diff <- mppet - mppet[, c(2:12, 1), drop = FALSE]
-  dtemp      <- sweep(acc$D_tsum, 2, acc$D_cnt, "/")
-  dppet      <- sweep(acc$D_psum, 2, acc$D_cnt, "/")
+  dtemp      <- sweep(acc$D_tsum,   2, acc$D_cnt, "/")
+  dppet      <- sweep(acc$D_psum,   2, acc$D_cnt, "/")
+  dprec      <- sweep(acc$D_prsum,  2, acc$D_cnt, "/")
+  dpet       <- sweep(acc$D_petsum, 2, acc$D_cnt, "/")
 
   out <- list(mtemp = mtemp, mprec = mprec, mpet = mpet, mppet = mppet,
-              mppet_diff = mppet_diff, dtemp = dtemp, dppet = dppet)
+              mppet_diff = mppet_diff, dtemp = dtemp, dppet = dppet,
+              dprec = dprec, dpet = dpet)
   if (acc$ncells == 1L) out <- lapply(out, as.vector) # match per-pixel contract
   out
 }
