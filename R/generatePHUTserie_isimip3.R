@@ -62,11 +62,29 @@ generatePHUTserie_isimip3 <- function(
   nc_tmp  <- nc_open(ncfname)
   lons    <- ncvar_get(nc_tmp, "lon")
   lats    <- ncvar_get(nc_tmp, "lat")
+  pmask   <- !is.na(ncvar_get(nc_tmp, "planting_day", start = c(1, 1, 1),
+                              count = c(720, 360, 1)))   # product land mask
   nc_close(nc_tmp)
 
   # Flat index into [lon x lat] = 720 x 360 array stored column-major in R:
   # matrix(sdate, nrow=720*360) row = (ilat-1)*720 + ilon
   lin_idx <- (match(grid_df$lat, lats) - 1L) * 720L + match(grid_df$lon, lons)
+
+  # Reconcile the LPJmL vs GGCMI grid mismatch (a 1-cell sub-antarctic-island
+  # artefact: GGCMI has 178.75,-49.25 while LPJmL has 178.75,-49.75). Any LPJmL cell
+  # that lands on a cell absent from the product grid is reassigned the nearest
+  # product land cell -- here its adjacent twin -- so it inherits that calendar.
+  off <- which(!pmask[lin_idx])
+  if (length(off) > 0) {
+    land     <- which(as.vector(pmask))               # flat (column-major) land indices
+    land_lon <- lons[((land - 1L) %% 720L) + 1L]
+    land_lat <- lats[((land - 1L) %/% 720L) + 1L]
+    for (i in off) {
+      d <- (land_lon - grid_df$lon[i])^2 + (land_lat - grid_df$lat[i])^2
+      lin_idx[i] <- land[which.min(d)]
+    }
+    cat("\nRemapped", length(off), "LPJmL cell(s) off the product grid to nearest land cell")
+  }
 
   # ------------------------------------------------------#
   # Output arrays ----
