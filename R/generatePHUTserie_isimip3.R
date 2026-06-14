@@ -280,10 +280,18 @@ paste.isimip3b.clm.fn <- function(path, gcm, scen, var, syear, eyear) {
 
 get.isimip.tas <- function(GCM, SC, SY, EY, ncells) {
 
-  if (SC == "obsclim") {
+  # ISIMIP3a observational forcings (GSWP3-W5E5 etc.): read the single dataset file
+  # directly, with NO historical/SSP splice. ryear (= the seek-offset reference) is
+  # the file's first year, so FY1 must be the dataset's actual first year. (The
+  # ESM branch below still maps to the 1850-2014 / 2015-2100 ISIMIP3b windows.)
+  obs_ranges <- list(obsclim     = c(1901, 2019),
+                     spinclim    = c(1801, 1900),
+                     counterclim = c(1901, 2019))
 
-    FY1 <- 1901
-    LY1 <- 2016
+  if (SC %in% names(obs_ranges)) {
+
+    FY1 <- obs_ranges[[SC]][1]
+    LY1 <- obs_ranges[[SC]][2]
 
   } else {
 
@@ -305,7 +313,7 @@ get.isimip.tas <- function(GCM, SC, SY, EY, ncells) {
 
   }
 
-  if (SC != "obsclim" && SY <= 2014 & EY > 2014) {
+  if (!(SC %in% names(obs_ranges)) && SY <= 2014 & EY > 2014) {
 
     tas_fn1 <- paste.isimip3b.clm.fn(isimip3b.path, GCM, SC1, "tas", FY1, LY1)
     tas_fn2 <- paste.isimip3b.clm.fn(isimip3b.path, GCM, SC2, "tas", FY2, LY2)
