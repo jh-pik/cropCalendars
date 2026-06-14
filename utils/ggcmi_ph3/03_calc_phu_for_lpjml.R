@@ -51,7 +51,9 @@ irri   <- args[4]
 prod_range <- list("historical" = c(1850, 2014), "picontrol" = c(1601, 2100),
                    "ssp119" = c(2015, 2100), "ssp126" = c(2015, 2100),
                    "ssp245" = c(2015, 2100), "ssp370" = c(2015, 2100),
-                   "ssp460" = c(2015, 2100), "ssp585" = c(2015, 2100))[[scen]]
+                   "ssp460" = c(2015, 2100), "ssp585" = c(2015, 2100),
+                   "obsclim" = c(1901, 2019), "spinclim" = c(1801, 1900),
+                   "counterclim" = c(1901, 2019))[[scen]]
 FYnc <- prod_range[1]; LYnc <- prod_range[2]
 
 # Annual product: one "period" per year, so the PHU matches each year's growing
@@ -65,13 +67,22 @@ cat(sprintf("PHU: %s %s %s_%s | years %d-%d | smooth_window=%d\n",
 ncdir  <- paste0(output_dir, "crop_calendars/ncdf/", gcm, "/", scen, "/")  # PHU .nc4 output
 if (!dir.exists(ncdir)) dir.create(ncdir, recursive = TRUE)
 
-# DRS crop-calendar file to read (output of stage 02).
-soc_dir  <- if (scen == "historical") "historical" else paste0(scen, "soc-adapt")
-soc_file <- if (scen == "historical") "histsoc" else scen
+# DRS crop-calendar file to read (output of stage 02). ISIMIP3a observational scenarios
+# (obsclim/spinclim -> histsoc, counterclim -> countersoc; any forcing dataset) ->
+# ISIMIP3a; ESMs -> ISIMIP3b per gcm x soc. Must mirror stage 02.
 irr_tok  <- if (irri == "ir") "firr" else "noirr"
-ncfile   <- paste0(output_dir, "ISIMIP3b/InputData/socioeconomic/crop_calendar/", gcm, "/", soc_dir,
-                   "/ggcmi-crop-calendar_", tolower(gcm), "_", soc_file, "_", cro, "-", irr_tok,
+if (scen %in% isimip3a_scenarios) {
+  soc_file <- if (scen == "counterclim") "countersoc" else "histsoc"
+  ncfile <- paste0(output_dir, "ISIMIP3a/InputData/socioeconomic/crop_calendar/", soc_file, "/",
+                   "ggcmi-crop-calendar_", tolower(gcm), "_", soc_file, "_", cro, "-", irr_tok,
                    "_annual_", FYnc, "_", LYnc, ".nc")
+} else {
+  soc_dir  <- if (scen == "historical") "historical" else paste0(scen, "soc-adapt")
+  soc_file <- if (scen == "historical") "histsoc" else scen
+  ncfile   <- paste0(output_dir, "ISIMIP3b/InputData/socioeconomic/crop_calendar/", gcm, "/", soc_dir,
+                     "/ggcmi-crop-calendar_", tolower(gcm), "_", soc_file, "_", cro, "-", irr_tok,
+                     "_annual_", FYnc, "_", LYnc, ".nc")
+}
 
 # ------------------------------------------------------#
 # Compute PHUs and Write ncdfs

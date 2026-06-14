@@ -111,7 +111,7 @@ generatePHUTserie_isimip3 <- function(
     w_lo <- max(FYnc, SYs[yy] - half); w_hi <- min(LYnc, EYs[yy] + half)
     tas_sum <- matrix(0.0, NCELLS, 365L)
     for (yr in w_lo:w_hi) {
-      tas_yr  <- get.isimip.tas(gcm, scen, yr, yr)
+      tas_yr  <- get.isimip.tas(gcm, scen, yr, yr, ncells = NCELLS)
       tas_sum <- tas_sum + tas_yr[, , 1L]
       rm(tas_yr)
     }
@@ -245,9 +245,9 @@ generatePHUTserie_isimip3 <- function(
 # ------------------------------------ #
 # Unexported helpers: climate I/O
 
-read.climate.input <- function(fname, ncells = NCELLS, ryear = RYEAR,
-                               fyear = FYEAR, lyear = LYEAR, header = HEADER,
-                               nbands = NBANDS, dtype = DTYPE, scalar = SCALAR) {
+read.climate.input <- function(fname, ncells, ryear,
+                               fyear, lyear, header = 43L,
+                               nbands = 365L, dtype = "integer", scalar = 0.1) {
 
   cat(paste("\nReading climate input:\n-----------------------\n", fname))
 
@@ -278,7 +278,7 @@ paste.isimip3b.clm.fn <- function(path, gcm, scen, var, syear, eyear) {
                      paste(syear, eyear, sep = "-"), sep = "_"), sep = "/"), ".clm")
 }
 
-get.isimip.tas <- function(GCM, SC, SY, EY) {
+get.isimip.tas <- function(GCM, SC, SY, EY, ncells) {
 
   if (SC == "obsclim") {
 
@@ -310,23 +310,23 @@ get.isimip.tas <- function(GCM, SC, SY, EY) {
     tas_fn1 <- paste.isimip3b.clm.fn(isimip3b.path, GCM, SC1, "tas", FY1, LY1)
     tas_fn2 <- paste.isimip3b.clm.fn(isimip3b.path, GCM, SC2, "tas", FY2, LY2)
 
-    tas1 <- read.climate.input(tas_fn1, ncells = NCELLS, ryear = FY1,
+    tas1 <- read.climate.input(tas_fn1, ncells = ncells, ryear = FY1,
                                fyear = SY, lyear = 2014, header = 43,
                                nbands = 365, dtype = "integer", scalar = 0.1)
-    tas2 <- read.climate.input(tas_fn2, ncells = NCELLS, ryear = FY2,
+    tas2 <- read.climate.input(tas_fn2, ncells = ncells, ryear = FY2,
                                fyear = 2015, lyear = EY, header = 43,
                                nbands = 365, dtype = "integer", scalar = 0.1)
 
-    tas <- array(NA, dim = c(NCELLS, 365, length(SY:EY)))
-    tas[1:NCELLS, 1:365, 1:dim(tas1)[3]] <- tas1
-    tas[1:NCELLS, 1:365, (dim(tas1)[3] + 1):(dim(tas)[3])] <- tas2
+    tas <- array(NA, dim = c(ncells, 365, length(SY:EY)))
+    tas[1:ncells, 1:365, 1:dim(tas1)[3]] <- tas1
+    tas[1:ncells, 1:365, (dim(tas1)[3] + 1):(dim(tas)[3])] <- tas2
     rm(tas1, tas2)
 
   } else {
 
     tas_fn <- paste.isimip3b.clm.fn(isimip3b.path, GCM, SC, "tas", FY1, LY1)
 
-    tas <- read.climate.input(tas_fn, ncells = NCELLS, ryear = FY1,
+    tas <- read.climate.input(tas_fn, ncells = ncells, ryear = FY1,
                               fyear = SY, lyear = EY, header = 43,
                               nbands = 365, dtype = "integer", scalar = 0.1)
   }

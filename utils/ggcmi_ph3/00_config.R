@@ -97,6 +97,13 @@ scenarios <- list(
 # Union of all scenarios, used to build the file-window lists below.
 scens <- sort(unique(unlist(scenarios, use.names = FALSE)))
 
+# ISIMIP3a observational-climate scenarios (vs ISIMIP3b ESM scenarios). Stage 02/03
+# branch the DRS publish path on these: any forcing run under one of these scenarios
+# (GSWP3-W5E5, 20CRv3-W5E5, ... -- the gcm stays a variable token) publishes under
+# ISIMIP3a/.../crop_calendar/<soc>/ with soc = histsoc (obsclim/spinclim) or
+# countersoc (counterclim), rather than the ISIMIP3b <gcm>/<soc> layout.
+isimip3a_scenarios <- c("obsclim", "spinclim", "counterclim")
+
 # NB: ensemble members and the per-scenario climate-file year windows are no longer
 # hardcoded. The annual pipeline (01_compute_annual_calendars.R) discovers the
 # climate files by globbing <CLIMATE_DIR>/<scenario>/<gcm>/ and reads the ensemble

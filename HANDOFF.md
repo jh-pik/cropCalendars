@@ -41,11 +41,18 @@
 >   DRS-compliant NetCDF in one pass (final names, 1601 time axis, ascending lat, fill
 >   values, chunking, publish path). Submit: `02_assemble_annual_ncdf.sh`.
 > - **Stage 03** `03_calc_phu_for_lpjml.R`: PHU per year (reads the DRS file).
-> - Open items: regenerate stage-02 NetCDF from the v0.2.1 GFDL calendars (the on-disk
->   NetCDFs are pre-fix); re-run ssp245 `01b` + its stage-02 with v0.2.1; re-confirm the
->   ssp245 trend-tracking calibration with the Gaussian kernel; roll calibrated settings
->   across the full GCM × scenario matrix; header-parity check vs the official ISIMIP
->   reference; ISIMIP3a DRS soc/naming for GSWP3.
+> - **DRS naming**: ISIMIP3b ESM runs publish under `ISIMIP3b/.../crop_calendar/<gcm>/<soc>/`
+>   with the gcm token in the filename; ISIMIP3a observational runs (any forcing dataset --
+>   GSWP3-W5E5, 20CRv3-W5E5, ...) keep the same filename layout under
+>   `ISIMIP3a/.../crop_calendar/<soc>/` — `ggcmi-crop-calendar_<gcm>_<soc>_<crop>-<irr>_annual_<y0>_<y1>.nc`
+>   — with the 3a soc: obsclim (1901-2019) & spinclim (1801-1900) -> `histsoc` (distinguished by
+>   year range, as in the ISIMIP3a landuse layout), counterclim (1901-2019) -> `countersoc`.
+>   Stage 02 + stage 03 branch on `scen %in% isimip3a_scenarios` (config), so the gcm stays a
+>   variable token.
+> - Open items: regenerate stage-02 NetCDF from the fixed GFDL calendars (the on-disk
+>   NetCDFs are pre-fix); re-run ssp245 `01b` + its stage-02; re-confirm the ssp245
+>   trend-tracking calibration with the Gaussian kernel; roll calibrated settings across the
+>   full GCM × scenario matrix; run the GSWP3-W5E5 (obsclim/spinclim) leg end-to-end.
 
 ## Context (historical — superseded window scheme)
 

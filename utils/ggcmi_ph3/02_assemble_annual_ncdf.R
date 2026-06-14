@@ -50,18 +50,31 @@ grid_clm <- e$grid_clm; ncell <- nrow(grid_clm)
 years_nc <- as.integer(e$emit_years); nyears <- length(years_nc)
 y0 <- min(years_nc); y1 <- max(years_nc)
 
-# DRS naming / publish path (soc specifier: file token vs directory).
-# TODO: ISIMIP3a observational forcings (GSWP3-W5E5 obsclim/counterclim) use a
-# different DRS soc convention -- confirm before publishing those.
-if (scen == "historical") { soc_file <- "histsoc"; soc_dir <- "historical" } else {
-  soc_file <- scen; soc_dir <- paste0(scen, "soc-adapt") }
-irr_tok  <- if (irri == "ir") "firr" else "noirr"
-gcm_lc   <- tolower(gcm)
-publish_dir <- paste0(output_dir, "ISIMIP3b/InputData/socioeconomic/crop_calendar")
-outdir   <- paste0(publish_dir, "/", gcm, "/", soc_dir, "/")
-if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-ncfname  <- paste0(outdir, "ggcmi-crop-calendar_", gcm_lc, "_", soc_file, "_",
-                   cro, "-", irr_tok, "_annual_", y0, "_", y1, ".nc")
+# DRS naming / publish path. ISIMIP3b ESM runs carry the GCM token and an soc
+# (histsoc / <ssp>soc-adapt). ISIMIP3a observational runs (scen in isimip3a_scenarios,
+# any forcing dataset -- gcm stays a variable token) keep the same filename layout
+# (gcm token + soc) under ISIMIP3a, with the 3a soc: obsclim & spinclim -> histsoc,
+# counterclim -> countersoc; published under the <soc> directory (mirroring the ISIMIP3a
+# landuse layout). spinclim (1801-1900) and obsclim (1901-2019) are distinguished by
+# year range (as landuse has two histsoc_annual files).
+irr_tok <- if (irri == "ir") "firr" else "noirr"
+gcm_lc  <- tolower(gcm)
+if (scen %in% isimip3a_scenarios) {
+  soc_file <- if (scen == "counterclim") "countersoc" else "histsoc"
+  publish_dir <- paste0(output_dir, "ISIMIP3a/InputData/socioeconomic/crop_calendar")
+  outdir   <- paste0(publish_dir, "/", soc_file, "/")
+  if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+  ncfname  <- paste0(outdir, "ggcmi-crop-calendar_", gcm_lc, "_", soc_file, "_",
+                     cro, "-", irr_tok, "_annual_", y0, "_", y1, ".nc")
+} else {
+  if (scen == "historical") { soc_file <- "histsoc"; soc_dir <- "historical" } else {
+    soc_file <- scen; soc_dir <- paste0(scen, "soc-adapt") }
+  publish_dir <- paste0(output_dir, "ISIMIP3b/InputData/socioeconomic/crop_calendar")
+  outdir   <- paste0(publish_dir, "/", gcm, "/", soc_dir, "/")
+  if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+  ncfname  <- paste0(outdir, "ggcmi-crop-calendar_", gcm_lc, "_", soc_file, "_",
+                     cro, "-", irr_tok, "_annual_", y0, "_", y1, ".nc")
+}
 cat(sprintf("\n%s %s | crop %s (rb=%s) irri %s -> %s\n", gcm, scen, cro, rb, irri, basename(ncfname)))
 
 # ------------------------------------ #
