@@ -38,9 +38,9 @@ ISIMIP3B_PATH=/p/projects/lpjml/input/scenarios/ISIMIP3bv2/
 # LPJmL grid file (defines the 67420 land cells / their lon-lat), read by 00_config.R.
 GRID_BIN=/p/projects/lpjml/input/historical/input_VERSION2/grid.bin
 
-# AgMIP reference crop-calendar input, read-only (keep trailing slash).
-# 02_generate_crop_cal_timeseries.R sets ggdir <- agmip_dir; generateCropCalTSerie_isimip3()
-# reads ggdir as a global (it is not a function argument), so this must stay set.
+# AgMIP reference crop-calendar input, read-only (keep trailing slash). Stage 02
+# (02_assemble_annual_ncdf.R) reads it for the observed GGCMI default sowing/harvest
+# dates used to fill cells without a rule-based calendar.
 AGMIP_DIR=/p/projects/macmit/data/GGCMI/AgMIP.input/phase3/crop_calendar/
 
 # --- Post-processing trees (04–07), derived from OUTPUT_DIR; bash-only ---------
