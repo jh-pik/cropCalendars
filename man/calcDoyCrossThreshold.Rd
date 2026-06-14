@@ -4,7 +4,7 @@
 \alias{calcDoyCrossThreshold}
 \title{Calculate day of crossing threshold}
 \usage{
-calcDoyCrossThreshold(daily_value, threshold, min_duration = 1L)
+calcDoyCrossThreshold(daily_value, threshold, min_duration = 1L, from = 1L)
 }
 \arguments{
 \item{daily_value}{Numeric vector of length 365. Climatological daily
@@ -23,16 +23,26 @@ for at least \code{min_duration} days (evaluated circularly), so a single-day
 noise blip in the daily climatology cannot register as a spurious crossing
 (e.g. a 1-day dip-and-recover through \code{temp_spring} in the autumn
 descent producing a sowing date ~130 days early).}
+
+\item{from}{Integer DOY (1..365, default 1) at which the circular scan for the
+"first" crossing begins. The first candidate at or after \code{from} (wrapping
+across the year boundary) is returned. The default \code{from = 1L} reproduces
+the original "first crossing from Jan 1" behaviour. Anchoring the scan to a
+stable phenological reference removes the spurious-crossing ambiguity in mild
+climates: e.g. for the spring up-crossing, starting from the coldest day skips
+an autumn temperature plateau grazing the threshold (which sits \emph{before}
+the winter minimum) and lands on the genuine spring warming crossing -- without
+introducing any temporal lag.}
 }
 \value{
 Named list with two elements:
   \describe{
-    \item{doy_cross_up}{First DOY where \code{daily_value} crosses upward
-      through \code{threshold} (i.e. was below on the previous day, at or
-      above today) and stays above for \code{min_duration} days. \code{-9999}
-      if no such upward crossing exists.}
-    \item{doy_cross_down}{First DOY where \code{daily_value} crosses
-      downward through \code{threshold} and stays below for
+    \item{doy_cross_up}{First DOY at/after \code{from} where \code{daily_value}
+      crosses upward through \code{threshold} (i.e. was below on the previous day,
+      at or above today) and stays above for \code{min_duration} days.
+      \code{-9999} if no such upward crossing exists.}
+    \item{doy_cross_down}{First DOY at/after \code{from} where \code{daily_value}
+      crosses downward through \code{threshold} and stays below for
       \code{min_duration} days. \code{-9999} if none.}
   }
 }

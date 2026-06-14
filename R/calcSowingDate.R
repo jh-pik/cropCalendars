@@ -82,9 +82,15 @@ calcSowingDate <- function(croppar,
     firstwinterdoy == -9999, DEFAULT_DOY, firstwinterdoy
     )
 
-  # First day of spring
+  # First day of spring: the first upward temp crossing AFTER the coldest day.
+  # Anchoring the scan to the (very stable) winter minimum skips an autumn
+  # temperature plateau grazing temp_spring -- which sits before the coldest day --
+  # that otherwise produces a spurious ~half-year-early sowing in mild-winter cells
+  # (e.g. Uruguay / S. Brazil), without adding any temporal lag.
+  coldest_doy      <- midday[which.min(monthly_temp)]
   firstspringdoy   <- calcDoyCrossThreshold(
-    daily_temp, temp_spring, min_duration = cross_min_duration)[["doy_cross_up"]]
+    daily_temp, temp_spring, min_duration = cross_min_duration,
+    from = coldest_doy)[["doy_cross_up"]]
   firstspringmonth <- ifelse(
     firstspringdoy == -9999, DEFAULT_MONTH, doy2month(firstspringdoy)
     )

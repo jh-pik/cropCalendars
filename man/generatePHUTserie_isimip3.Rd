@@ -15,6 +15,7 @@ generatePHUTserie_isimip3(
   EYs = NULL,
   FYnc = NULL,
   LYnc = NULL,
+  grid_df = NULL,
   crop_par_file = NULL,
   ncfile = NULL,
   smooth_window = 1L
