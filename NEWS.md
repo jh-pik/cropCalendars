@@ -2,6 +2,31 @@
 
 ## 0.2.0 — annual sliding-window pipeline
 
+### Wet-window hysteresis — anchor fix + Gaussian distance kernel
+- **Fixed the wettest-window hysteresis anchor bug.** The per-cell state carried between
+  years (`prev_wet`) was taken from crop #1's *sowing day* (`calcCropCalendars` set
+  `attr(., "wet_doy") <- sowing_day` for PREC/PRECTEMP cells). That equals the
+  wettest-window argmax only for crops that take the wet-season sowing branch — but a
+  **vernalizing/winter crop (e.g. `Winter_Wheat`, crop #1 in the combined 7-crop run)
+  takes the winter branch even in PREC/PRECTEMP cells**, so its sowing day is NOT the
+  wet-window DOY. The wrong anchor was then fed back as `prev_doy` for *every* crop,
+  flipping the eps-weighted pick at the cold-start → first-sticky-year boundary: on
+  GFDL-ESM4 historical Maize this produced a spurious 1850→1851 jump in 21,015 cells
+  (then frozen 1851–1880, since the bogus anchor was constant). Maize-only runs never
+  exposed it (there crop #1 *is* Maize). Fix: `wet_doy` is now computed
+  **crop-independently** from the climate via `calcDoyWetMonth(dprec, dpet, …)`; after the
+  fix the 1850→1851 jump is **0 cells**. (Any combined-run output produced before this fix
+  is contaminated and must be regenerated.)
+- **`calcDoyWetMonth` distance weight is now Gaussian** with an explicit floor, replacing
+  the linear ramp: `w(x) = (1−eps) + eps·exp(−(x/decay)²)`, `x = Δ/(365/2)`. Same anchors
+  as before — `w(0)=1` (small drifts essentially free) and `w(antipode)=1−eps` (the floor;
+  a far peak must be >1/(1−eps)× wetter to win) — but a **faster mid-distance decline**
+  (new `decay` param; config `wet_window_decay=0.3`) that closes the soft 1.5–3.5-month
+  band where bimodal "chronic flippers" lived: a rival ~3 months out must now be ~1.9×
+  wetter vs ~1.3× under the linear kernel. `eps` keeps its meaning (floor depth);
+  `eps=0` / `prev_doy=NA` still reproduces the plain argmax. Threaded as `wet_window_decay`
+  through `calcSowingDate`/`calcCropCalendars` and the `01b`/`01` drivers.
+
 ### Major
 - **Pipeline rebuilt from a 10-year-step scheme to an annual 30-yr sliding window**
   (`R/slidingMonthlyClimate.R` ring buffer; calendars computed every year, smooth and

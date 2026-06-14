@@ -4,7 +4,13 @@
 \alias{calcDoyWetMonth}
 \title{Calculate beginning of the rainy season}
 \usage{
-calcDoyWetMonth(daily_prec, daily_pet, prev_doy = NA_integer_, eps = 0)
+calcDoyWetMonth(
+  daily_prec,
+  daily_pet,
+  prev_doy = NA_integer_,
+  eps = 0,
+  decay = 0.3
+)
 }
 \arguments{
 \item{daily_prec}{Numeric vector of length 365. Climatological daily
@@ -27,22 +33,31 @@ only when \code{eps > 0} to apply temporal hysteresis (see \code{eps}).}
 
   With \code{eps > 0} and a \code{prev_doy} supplied, the window is chosen by a
   \strong{distance-weighted, max-normalised} score rather than the raw argmax:
-  \deqn{score(d) = \frac{w(d)}{\max_k w(k)} \,\cdot\, \max\!\Big(1 - \varepsilon\,
-        \frac{\Delta(d, prev)}{365/2},\, 0\Big),}
+  \deqn{score(d) = \frac{w(d)}{\max_k w(k)} \,\cdot\, \Big[(1-\varepsilon) +
+        \varepsilon \, e^{-(x/decay)^2}\Big], \quad x = \frac{\Delta(d, prev)}{365/2},}
   where \eqn{w} is \eqn{\sum P/\sum PET} and \eqn{\Delta(d, prev)} is the circular
   DOY distance to last year's chosen window. The first factor is the window's
   goodness as a fraction of the year's best (so \code{eps} is dimensionless and
-  comparable across cells); the second linearly down-weights windows by their
-  distance from last year's pick. Because last year's window sits at
-  \eqn{\Delta = 0} (weight 1) and nearby DOYs are barely penalised, small drifts
-  of the same peak are followed freely; a far peak is penalised but, since the
-  weight floors at \eqn{1-\varepsilon} (never 0), it still wins when it is
-  decisively better — i.e. a genuine regime shift is followed, a near-tie flip is
-  not. Larger \code{eps} = stickier (\code{eps} ~0.3-0.5 suppresses far near-tie
-  flips while still tracking gradual onset drift).
+  comparable across cells); the second is a \strong{Gaussian} down-weight by
+  normalised distance from last year's pick. It equals 1 at \eqn{\Delta = 0}
+  (last year's window, plus a near-flat plateau for small drifts), decays on a
+  scale set by \code{decay}, and \strong{floors at \eqn{1-\varepsilon}} (never 0)
+  so a decisively better far peak still wins — a genuine regime shift is followed,
+  a near-tie flip is not. Compared with a linear weight the Gaussian declines
+  faster through the mid-distances where chronic bimodal flippers live, so it is
+  stickier there for the same floor.
+
+  \code{eps} sets the floor (max penalty: far weight = \eqn{1-\varepsilon};
+  \code{eps = 0.5} -> floor 0.5, i.e. a far peak must be >2x wetter to win).
+  \code{decay} sets how fast the weight falls (smaller = faster/stickier; ~0.3
+  reaches the floor by ~3 months out).
 
   With \code{eps = 0} or \code{prev_doy = NA} the plain argmax is returned
   (backward compatible).}
+
+\item{decay}{Positive numeric (default 0.3). Gaussian decay scale for the
+distance weight, in units of half a year (so \code{decay = 0.3} ~= 55 days).
+Smaller is stickier. Only used when \code{eps > 0}.}
 }
 \value{
 Integer DOY (1–365) of the start of the 120-day wettest window.

@@ -58,7 +58,8 @@ cross_min_duration <- 5L      # min sustained-excursion days for calcDoyCrossThr
 # argmax( (ws/max ws) * (1 - eps*dist_to_last_year/182.5) ): near peaks essentially
 # free (tracks drift), far peaks must be decisively better to win. eps=0.5 cut the
 # wet-cell mean year-to-year jump 1.59 -> 0.13 and cells-ever-flipping 0.257 -> 0.077.
-wet_window_eps    <- 0.5      # wettest-window distance-weighting strength (0 = plain argmax)
+wet_window_eps    <- 0.5      # wettest-window weight FLOOR = 1-eps (0 = plain argmax); far peak must be >1/(1-eps)x wetter to win
+wet_window_decay  <- 0.3      # Gaussian decay scale of the distance weight (units of half-year; smaller = stickier)
 
 # Seasonality-classifier hysteresis (threshold deadband). ~18% of cells flip their
 # seasonality CLASS year to year (grazing the CV_prec/CV_temp/min_temp thresholds),

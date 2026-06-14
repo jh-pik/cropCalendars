@@ -30,39 +30,50 @@
 #'
 #'   With \code{eps > 0} and a \code{prev_doy} supplied, the window is chosen by a
 #'   \strong{distance-weighted, max-normalised} score rather than the raw argmax:
-#'   \deqn{score(d) = \frac{w(d)}{\max_k w(k)} \,\cdot\, \max\!\Big(1 - \varepsilon\,
-#'         \frac{\Delta(d, prev)}{365/2},\, 0\Big),}
+#'   \deqn{score(d) = \frac{w(d)}{\max_k w(k)} \,\cdot\, \Big[(1-\varepsilon) +
+#'         \varepsilon \, e^{-(x/decay)^2}\Big], \quad x = \frac{\Delta(d, prev)}{365/2},}
 #'   where \eqn{w} is \eqn{\sum P/\sum PET} and \eqn{\Delta(d, prev)} is the circular
 #'   DOY distance to last year's chosen window. The first factor is the window's
 #'   goodness as a fraction of the year's best (so \code{eps} is dimensionless and
-#'   comparable across cells); the second linearly down-weights windows by their
-#'   distance from last year's pick. Because last year's window sits at
-#'   \eqn{\Delta = 0} (weight 1) and nearby DOYs are barely penalised, small drifts
-#'   of the same peak are followed freely; a far peak is penalised but, since the
-#'   weight floors at \eqn{1-\varepsilon} (never 0), it still wins when it is
-#'   decisively better — i.e. a genuine regime shift is followed, a near-tie flip is
-#'   not. Larger \code{eps} = stickier (\code{eps} ~0.3-0.5 suppresses far near-tie
-#'   flips while still tracking gradual onset drift).
+#'   comparable across cells); the second is a \strong{Gaussian} down-weight by
+#'   normalised distance from last year's pick. It equals 1 at \eqn{\Delta = 0}
+#'   (last year's window, plus a near-flat plateau for small drifts), decays on a
+#'   scale set by \code{decay}, and \strong{floors at \eqn{1-\varepsilon}} (never 0)
+#'   so a decisively better far peak still wins — a genuine regime shift is followed,
+#'   a near-tie flip is not. Compared with a linear weight the Gaussian declines
+#'   faster through the mid-distances where chronic bimodal flippers live, so it is
+#'   stickier there for the same floor.
+#'
+#'   \code{eps} sets the floor (max penalty: far weight = \eqn{1-\varepsilon};
+#'   \code{eps = 0.5} -> floor 0.5, i.e. a far peak must be >2x wetter to win).
+#'   \code{decay} sets how fast the weight falls (smaller = faster/stickier; ~0.3
+#'   reaches the floor by ~3 months out).
 #'
 #'   With \code{eps = 0} or \code{prev_doy = NA} the plain argmax is returned
 #'   (backward compatible).
+#'
+#' @param decay Positive numeric (default 0.3). Gaussian decay scale for the
+#'   distance weight, in units of half a year (so \code{decay = 0.3} ~= 55 days).
+#'   Smaller is stickier. Only used when \code{eps > 0}.
 #'
 #' @return Integer DOY (1–365) of the start of the 120-day wettest window.
 #' @export
 
 calcDoyWetMonth <- function(daily_prec, daily_pet,
-                            prev_doy = NA_integer_, eps = 0) {
+                            prev_doy = NA_integer_, eps = 0, decay = 0.3) {
   ws <- .circRollSum(daily_prec, 120) / pmax(.circRollSum(daily_pet, 120), 1e-6)
   if (eps <= 0 || is.na(prev_doy) || prev_doy < 1L || prev_doy > length(ws))
     return(as.integer(which.max(ws)))
   # Distance-weighted, max-normalised selection. q in (0,1] is each window's
-  # goodness relative to the year's best; the linear weight down-weights windows by
-  # circular distance to last year's pick but floors at 1-eps so a decisively better
-  # far peak still wins (regime shift). Near DOYs (weight ~1) let the same peak drift.
+  # goodness relative to the year's best; the Gaussian weight down-weights windows
+  # by circular distance to last year's pick (faster mid-distance decline than a
+  # linear ramp) but floors at 1-eps so a decisively better far peak still wins
+  # (regime shift). Near DOYs (weight ~1) let the same peak drift freely.
   n     <- length(ws)
   d     <- abs(seq_len(n) - prev_doy); d <- pmin(d, n - d)   # circular distance (days)
+  x     <- d / (n / 2)                                       # normalised to [0, 1]
   q     <- ws / max(ws)
-  score <- q * pmax(1 - eps * d / (n / 2), 0)
+  score <- q * ((1 - eps) + eps * exp(-(x / decay)^2))
   as.integer(which.max(score))
 }
 

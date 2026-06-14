@@ -42,6 +42,7 @@ probe_n   <- as.integer(Sys.getenv("PROBE_NEMIT", "0"))   # 0 = full run
 # Source-level oscillation fix (config): smooth the daily climatology and require
 # threshold crossings to persist before they count (see 00_config.R).
 if (!exists("wet_window_eps"))        wet_window_eps        <- 0
+if (!exists("wet_window_decay"))      wet_window_decay      <- 0.3
 if (!exists("clm_smooth_window"))     clm_smooth_window     <- 0L
 if (!exists("cross_min_duration"))    cross_min_duration    <- 1L
 if (!exists("seas_eps"))              seas_eps              <- 0
@@ -144,6 +145,7 @@ computeYear <- function(clim, prev_wet, prev_seas) {
       r <- calcCropCalendars(lon = land_lon[j], lat = land_lat[j], mclimate = mcl,
                              crop_parameters = cparams[[ci]],
                              prev_wet_doy = prev_wet[j], wet_window_eps = wet_window_eps,
+                             wet_window_decay = wet_window_decay,
                              cross_min_duration = cross_min_duration,
                              prev_seas = prev_seas[j], seas_eps = seas_eps,
                              seas_mtemp_margin = seas_mtemp_margin)

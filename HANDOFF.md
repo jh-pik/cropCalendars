@@ -9,8 +9,8 @@
 > - **Config** `00_config.R`: `gcms` + per-GCM `scenarios` matrix; tunables
 >   `clm_avg_years=30`, `clm_emit_step=1`, `pet_method="fao56"`, `phu_smooth_window=1`,
 >   and the oscillation-suppression knobs `clm_smooth_window=15`, `cross_min_duration=5`,
->   `wet_window_eps=0.5`, `seas_eps=0.25`. Crops derived from `crop_ls`.
->   `enms`/`syears`/`eyears`/`ccal_years` removed.
+>   `wet_window_eps=0.5`, `wet_window_decay=0.3`, `seas_eps=0.25`. Crops derived from
+>   `crop_ls`. `enms`/`syears`/`eyears`/`ccal_years` removed.
 > - **Climate** `settings.sh` `CLIMATE_DIR`: colon-separated **search list** of official
 >   ISIMIP roots (3b primary+secondary, 3a obsclim/spinclim). Files discovered by
 >   globbing; ensemble member/scenario/year-range read from file names. Cells = the
@@ -29,13 +29,23 @@
 >   smoothing + sustained-crossing (`clm_smooth_window`/`cross_min_duration`, temperature
 >   branch); distance-weighted wettest-window selection (`wet_window_eps`, PREC near-tie);
 >   seasonality-threshold deadband (`seas_eps`, class flips). See METHODOLOGY §6.
+> - **Wet-window refinement (later in v0.2.0)** — (a) fixed the wettest-window hysteresis
+>   **anchor bug**: `prev_wet` was taken from crop #1's sowing day, wrong for a winter crop
+>   (`Winter_Wheat`) in the combined run (caused a spurious 1850→1851 jump in 21k cells);
+>   `wet_doy` is now computed crop-independently. (b) the `calcDoyWetMonth` distance weight
+>   is now **Gaussian** with a `1−eps` floor and a `wet_window_decay` knob (faster
+>   mid-distance decline → stickier for bimodal "chronic flippers"; same near/far behaviour
+>   as the old linear kernel). **NB: any combined-run calendars/NetCDFs produced before this
+>   fix are contaminated by the anchor bug and must be regenerated.** See NEWS / METHODOLOGY §6.
 > - **Stage 02** `02_assemble_annual_ncdf.R` (replaces old 02 + **04–07**): writes the
 >   DRS-compliant NetCDF in one pass (final names, 1601 time axis, ascending lat, fill
 >   values, chunking, publish path). Submit: `02_assemble_annual_ncdf.sh`.
 > - **Stage 03** `03_calc_phu_for_lpjml.R`: PHU per year (reads the DRS file).
-> - Open items: full 7-crop combined `01b` for GFDL/historical → regenerate stage-02
->   NetCDF; roll calibrated settings across the full GCM × scenario matrix; header-parity
->   check vs the official ISIMIP reference; ISIMIP3a DRS soc/naming for GSWP3.
+> - Open items: regenerate stage-02 NetCDF from the v0.2.1 GFDL calendars (the on-disk
+>   NetCDFs are pre-fix); re-run ssp245 `01b` + its stage-02 with v0.2.1; re-confirm the
+>   ssp245 trend-tracking calibration with the Gaussian kernel; roll calibrated settings
+>   across the full GCM × scenario matrix; header-parity check vs the official ISIMIP
+>   reference; ISIMIP3a DRS soc/naming for GSWP3.
 
 ## Context (historical — superseded window scheme)
 
