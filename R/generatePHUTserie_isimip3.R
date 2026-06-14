@@ -228,7 +228,7 @@ generatePHUTserie_isimip3 <- function(
   ncatt_put(ncout, "time", "axis", "T")
 
   ncatt_put(ncout, 0, "Crop",
-            paste0(crop_ls[["ggcmi"]][cr], "_", irri_ls[[ir]]["ggcmi"]))
+            paste0(crop_ls[["ggcmi"]][cr], "_", irri_ls[["ggcmi"]][ir]))
   ncatt_put(ncout, 0, "Institution",
             "Potsdam Institute for Climate Impact Research (PIK), Germany")
   history <- paste("Created by Sara Minoli on", date(), sep = " ")

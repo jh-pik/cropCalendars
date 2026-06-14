@@ -23,9 +23,21 @@ settings_file <- if (exists("work_dir")) file.path(work_dir, "settings.sh") else
   lines <- readLines(settings_file)
   lines <- lines[grepl("^[A-Za-z_][A-Za-z0-9_]*=", lines)]   # keep KEY=VALUE lines
   keys  <- sub("=.*$", "", lines)
-  vals  <- gsub("(^[\"']|[\"']$)", "", trimws(sub("^[^=]*=", "", lines)))
+  raw   <- sub("^[^=]*=", "", lines)
+  raw   <- sub("[[:space:]]+#.*$", "", raw)                  # strip trailing inline comment
+  vals  <- gsub("(^[\"']|[\"']$)", "", trimws(raw))
   setNames(as.list(vals), keys)
 })
+
+# Fail loudly if a required deployment key is absent: a missing key would otherwise
+# be NULL and either crash (strsplit on CLIMATE_DIR) or silently collapse in paste0
+# to a root/relative path. Validate here, at the single config source of truth.
+.required_settings <- c("OUTPUT_DIR", "CLIMATE_DIR", "ISIMIP3B_PATH",
+                        "AGMIP_DIR", "GRID_BIN")
+.missing_settings  <- setdiff(.required_settings, names(.settings))
+if (length(.missing_settings) > 0)
+  stop("settings.sh (", settings_file, ") is missing required key(s): ",
+       paste(.missing_settings, collapse = ", "))
 
 # Output directory: where output data are going to be saved
 output_dir <- .settings$OUTPUT_DIR

@@ -62,7 +62,11 @@
 calcDoyWetMonth <- function(daily_prec, daily_pet,
                             prev_doy = NA_integer_, eps = 0, decay = 0.3) {
   ws <- .circRollSum(daily_prec, 120) / pmax(.circRollSum(daily_pet, 120), 1e-6)
-  if (eps <= 0 || is.na(prev_doy) || prev_doy < 1L || prev_doy > length(ws))
+  # Plain argmax when hysteresis is off/unseeded, or when every window sums to 0
+  # (a bone-dry cell): max(ws) == 0 would make q = ws/max(ws) all NaN below and
+  # which.max(score) return integer(0). which.max(ws) safely returns DOY 1 here.
+  if (eps <= 0 || is.na(prev_doy) || prev_doy < 1L || prev_doy > length(ws) ||
+      max(ws) <= 0)
     return(as.integer(which.max(ws)))
   # Distance-weighted, max-normalised selection. q in (0,1] is each window's
   # goodness relative to the year's best; the Gaussian weight down-weights windows

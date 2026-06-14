@@ -79,7 +79,17 @@ readNcdf <- function(file_name  = NULL,
       dname              <- dims[i]
       idim_list[[dname]] <- which(dim_list[[dname]] %in% dim_subset[[dname]])
       if (length(idim_list[[dname]]) == 0) {
-        # if dims[i] is not specified in dim_subset, read it entirely
+        if (!is.null(dim_subset[[dname]])) {
+          # Requested values exist but match NONE of this dimension's coordinate
+          # values. Reading the whole dimension here would silently return the
+          # wrong slice (e.g. a time axis referenced to a fixed epoch vs. 0-based
+          # indices), so fail loudly instead.
+          stop("readNcdf: requested values for dimension '", dname,
+               "' match none of its coordinate values (range [",
+               min(dim_list[[dname]]), ", ", max(dim_list[[dname]]),
+               "]). Check that the subset uses coordinate values, not indices.")
+        }
+        # Dimension not specified in dim_subset: read it entirely.
         idim_list[[dname]] <- seq_len(length(dim_list[[dname]]))
       }
       dim_list_sub[[dname]] <- dim_list[[dname]][idim_list[[dname]]]

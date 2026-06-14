@@ -47,14 +47,36 @@ scen   <- args[2]
 cro    <- args[3]
 irri   <- args[4]
 
-# Product year range (annual product), per scenario.
-prod_range <- list("historical" = c(1850, 2014), "picontrol" = c(1601, 2100),
-                   "ssp119" = c(2015, 2100), "ssp126" = c(2015, 2100),
-                   "ssp245" = c(2015, 2100), "ssp370" = c(2015, 2100),
-                   "ssp460" = c(2015, 2100), "ssp585" = c(2015, 2100),
-                   "obsclim" = c(1901, 2019), "spinclim" = c(1801, 1900),
-                   "counterclim" = c(1901, 2019))[[scen]]
-FYnc <- prod_range[1]; LYnc <- prod_range[2]
+# DRS crop-calendar file to read (output of stage 02). ISIMIP3a observational scenarios
+# (obsclim/spinclim -> histsoc, counterclim -> countersoc; any forcing dataset) ->
+# ISIMIP3a; ESMs -> ISIMIP3b per gcm x soc. The directory + filename stem MUST mirror
+# stage 02 (02_assemble_annual_ncdf.R) exactly.
+irr_tok  <- if (irri == "ir") "firr" else "noirr"
+if (scen %in% isimip3a_scenarios) {
+  soc_file <- if (scen == "counterclim") "countersoc" else "histsoc"
+  cal_dir  <- paste0(output_dir, "ISIMIP3a/InputData/socioeconomic/crop_calendar/", soc_file, "/")
+} else {
+  soc_dir  <- if (scen == "historical") "historical" else paste0(scen, "soc-adapt")
+  soc_file <- if (scen == "historical") "histsoc" else scen
+  cal_dir  <- paste0(output_dir, "ISIMIP3b/InputData/socioeconomic/crop_calendar/", gcm, "/", soc_dir, "/")
+}
+cal_stem <- paste0("ggcmi-crop-calendar_", tolower(gcm), "_", soc_file, "_",
+                   cro, "-", irr_tok, "_annual_")
+
+# Derive the product year range from the file stage 02 actually wrote, instead of a
+# hardcoded per-scenario table: stage 02 names the file from the discovered emit_years
+# (min/max), so reading the range back from the file keeps the two stages on a single
+# source of truth (any new dataset / partial run / unlisted scenario just works).
+hits <- Sys.glob(paste0(cal_dir, cal_stem, "*.nc"))
+if (length(hits) == 0)
+  stop("Stage-02 crop-calendar file not found (run stage 02 first): ",
+       cal_dir, cal_stem, "*.nc")
+ncfile <- hits[1]
+m <- regmatches(basename(ncfile),
+                regexec("_annual_([0-9]{4})_([0-9]{4})\\.nc$", basename(ncfile)))[[1]]
+if (length(m) != 3)
+  stop("Cannot parse the product year range from: ", basename(ncfile))
+FYnc <- as.integer(m[2]); LYnc <- as.integer(m[3])
 
 # Annual product: one "period" per year, so the PHU matches each year's growing
 # period exactly. PHU_SMOOTH_WINDOW (default 1) optionally widens the temperature
@@ -66,23 +88,6 @@ cat(sprintf("PHU: %s %s %s_%s | years %d-%d | smooth_window=%d\n",
 
 ncdir  <- paste0(output_dir, "crop_calendars/ncdf/", gcm, "/", scen, "/")  # PHU .nc4 output
 if (!dir.exists(ncdir)) dir.create(ncdir, recursive = TRUE)
-
-# DRS crop-calendar file to read (output of stage 02). ISIMIP3a observational scenarios
-# (obsclim/spinclim -> histsoc, counterclim -> countersoc; any forcing dataset) ->
-# ISIMIP3a; ESMs -> ISIMIP3b per gcm x soc. Must mirror stage 02.
-irr_tok  <- if (irri == "ir") "firr" else "noirr"
-if (scen %in% isimip3a_scenarios) {
-  soc_file <- if (scen == "counterclim") "countersoc" else "histsoc"
-  ncfile <- paste0(output_dir, "ISIMIP3a/InputData/socioeconomic/crop_calendar/", soc_file, "/",
-                   "ggcmi-crop-calendar_", tolower(gcm), "_", soc_file, "_", cro, "-", irr_tok,
-                   "_annual_", FYnc, "_", LYnc, ".nc")
-} else {
-  soc_dir  <- if (scen == "historical") "historical" else paste0(scen, "soc-adapt")
-  soc_file <- if (scen == "historical") "histsoc" else scen
-  ncfile   <- paste0(output_dir, "ISIMIP3b/InputData/socioeconomic/crop_calendar/", gcm, "/", soc_dir,
-                     "/ggcmi-crop-calendar_", tolower(gcm), "_", soc_file, "_", cro, "-", irr_tok,
-                     "_annual_", FYnc, "_", LYnc, ".nc")
-}
 
 # ------------------------------------------------------#
 # Compute PHUs and Write ncdfs

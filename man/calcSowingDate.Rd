@@ -15,7 +15,8 @@ calcSowingDate(
   prev_wet_doy = NA_integer_,
   wet_window_eps = 0,
   wet_window_decay = 0.3,
-  cross_min_duration = 1L
+  cross_min_duration = 1L,
+  wet_doy = NULL
 )
 }
 \arguments{
@@ -54,6 +55,11 @@ PREC/PRECTEMP sowing branch. Only used when \code{wet_window_eps > 0}.}
 \item{cross_min_duration}{Integer minimum sustained-excursion length (days)
 forwarded to \code{calcDoyCrossThreshold} for the spring/fall temperature
 crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.}
+
+\item{wet_doy}{Optional pre-computed wettest-window start DOY (the crop-independent
+\code{calcDoyWetMonth} result). When supplied it is used directly in the
+PREC/PRECTEMP spring-sowing branch, so the caller (\code{calcCropCalendars}) can
+compute it once per cell instead of twice. \code{NULL} (default) recomputes it.}
 }
 \description{
 Calculate sowing date (Waha et al., 2012)

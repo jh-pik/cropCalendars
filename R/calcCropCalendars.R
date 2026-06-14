@@ -88,6 +88,21 @@ calcCropCalendars <- function(lon                   = NULL,
     mtemp_margin = seas_mtemp_margin
   )
 
+  # Resolved wettest-window start, carried forward as hysteresis state. This is the
+  # crop-INDEPENDENT wettest-window DOY (pure climate), computed once here and then
+  # passed into calcSowingDate (the PREC/PRECTEMP spring sowing uses exactly this
+  # value) so the 120-day rolling P/PET selection -- the dominant inner-loop cost --
+  # runs once per cell instead of twice. It is taken here rather than from sowing_day
+  # because vernalizing/winter crops take the winter sowing branch even in
+  # PREC/PRECTEMP cells, so their sowing_day is NOT the wet-window argmax. Carrying
+  # that wrong anchor poisoned prev_wet whenever crop #1 was a winter crop (e.g.
+  # Winter_Wheat in the combined run), flipping the eps-weighted pick at the
+  # cold-start -> first-sticky-year boundary. Only PREC/PRECTEMP cells have wet-window
+  # state; elsewhere report NA.
+  wet_doy <- if (seasonality %in% c("PREC", "PRECTEMP"))
+    calcDoyWetMonth(dprec, dpet, prev_doy = prev_wet_doy, eps = wet_window_eps,
+                    decay = wet_window_decay) else NA_integer_
+
   # Sowing date
   sowing <- calcSowingDate(
     croppar        = crop_parameters,
@@ -100,24 +115,13 @@ calcCropCalendars <- function(lon                   = NULL,
     prev_wet_doy          = prev_wet_doy,
     wet_window_eps        = wet_window_eps,
     wet_window_decay      = wet_window_decay,
-    cross_min_duration    = cross_min_duration
+    cross_min_duration    = cross_min_duration,
+    wet_doy               = wet_doy
   )
 
   sowing_month  <- sowing[["sowing_month"]]
   sowing_day    <- sowing[["sowing_doy"]]
   sowing_season <- sowing[["sowing_season"]]
-
-  # Resolved wettest-window start to carry forward as hysteresis state. This is the
-  # crop-INDEPENDENT wettest-window DOY (pure climate), recomputed here rather than
-  # taken from sowing_day: vernalizing/winter crops take the winter sowing branch
-  # even in PREC/PRECTEMP cells, so their sowing_day is NOT the wet-window argmax.
-  # Carrying that wrong anchor poisoned prev_wet whenever crop #1 was a winter crop
-  # (e.g. Winter_Wheat in the combined run), flipping the eps-weighted pick at the
-  # cold-start -> first-sticky-year boundary. Only PREC/PRECTEMP cells have wet-window
-  # state; elsewhere report NA.
-  wet_doy <- if (seasonality %in% c("PREC", "PRECTEMP"))
-    calcDoyWetMonth(dprec, dpet, prev_doy = prev_wet_doy, eps = wet_window_eps,
-                    decay = wet_window_decay) else NA_integer_
 
   # Harvest date
   harvest_rule  <- calcHarvestRule(
