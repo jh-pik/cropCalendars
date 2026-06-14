@@ -15,6 +15,10 @@ gcms=('GFDL-ESM4' 'IPSL-CM6A-LR' 'MPI-ESM1-2-HR' 'MRI-ESM2-0' 'UKESM1-0-LL')
 scens=('historical' 'ssp126' 'ssp370' 'ssp585')   # add 'picontrol' (1601-2100) if needed
 CORES=${CORES:-64}
 QOS=${QOS:-priority}                                # priority (<=64 cores, immediate) or standby
+# R_GC_MEM_GROW=0 (set in the wrap below): keep R's heap arena/GC-trigger tight so the
+# 64 mclapply workers collect aggressively instead of inheriting an inflated trigger and
+# each ballooning ~2x via copy-on-write of the large parent heap (ring buffer + OUT) ->
+# 340 GB OOM. Tight growth restores the ~168 GB profile. See computeYear note in the .R.
 WD="$(dirname "$(readlink -f "$0")")"
 mkdir -p "${WD}/logs"
 
@@ -24,7 +28,7 @@ for g in "${gcms[@]}"; do
       -A "${ACCOUNT}" --chdir="${WD}" --qos=${QOS} \
       -o logs/cc_annual_${g}_${s}-%j.out \
       --export=ALL,EMIT_STEP=1 \
-      --wrap="source ${WD}/env.sh; load_r_env; export HDF5_USE_FILE_LOCKING=FALSE; Rscript 01_compute_annual_calendars.R ${g} ${s} ${CORES}"
+      --wrap="source ${WD}/env.sh; load_r_env; export HDF5_USE_FILE_LOCKING=FALSE R_GC_MEM_GROW=0; Rscript 01_compute_annual_calendars.R ${g} ${s} ${CORES}"
     echo "submitted cc_ann_${g}_${s} (${CORES} cores, ${QOS})"
   done
 done

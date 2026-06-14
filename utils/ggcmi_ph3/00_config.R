@@ -41,6 +41,31 @@ clm_avg_years     <- 30       # climate-averaging window length (years)
 clm_emit_step     <- 1        # compute calendars every N years (1 = fully annual)
 pet_method        <- "fao56"  # PET: "fao56" (Penman-Monteith) or "pt" (Priestley-Taylor)
 phu_smooth_window <- 1        # PHU temperature-averaging window (years; 1 = period-exact)
+# Daily-climatology smoothing + sustained-crossing guard. These attack the
+# year-to-year sowing/harvest oscillation at its source: the per-DOY daily means
+# (dtemp/dprec/dpet) carry ~1 degC / spiky day-to-day jitter, and the point
+# detectors (calcDoyCrossThreshold spring/fall + wet-season-end crossings) latch
+# onto single-day blips -> spurious crossings ~130 days off (e.g. a 1-day dip
+# through temp_spring=14 in the autumn descent). clm_smooth_window applies a
+# centred circular running mean to the daily climatologies; cross_min_duration
+# requires a crossing to persist that many days before it counts.
+clm_smooth_window <- 15L      # daily-climatology smoothing window (days, odd; 0/1 = off)
+cross_min_duration <- 5L      # min sustained-excursion days for calcDoyCrossThreshold (1 = off)
+
+# Wettest-window hysteresis (distance-weighted, max-normalised selection). For the
+# ~57% of PREC/PRECTEMP cells with a near-tied second 120-day P/PET peak, the plain
+# argmax flips between far-apart peaks year to year. The new rule picks
+# argmax( (ws/max ws) * (1 - eps*dist_to_last_year/182.5) ): near peaks essentially
+# free (tracks drift), far peaks must be decisively better to win. eps=0.5 cut the
+# wet-cell mean year-to-year jump 1.59 -> 0.13 and cells-ever-flipping 0.257 -> 0.077.
+wet_window_eps    <- 0.5      # wettest-window distance-weighting strength (0 = plain argmax)
+wet_window_drift_gate <- 7L   # deprecated/ignored (kept for call-site compatibility)
+
+# Seasonality-classifier hysteresis (threshold deadband). ~18% of cells flip their
+# seasonality CLASS year to year (grazing the CV_prec/CV_temp/min_temp thresholds),
+# which swaps the whole sowing rule. seas_eps relaxes each threshold toward keeping
+# last year's class (thermostat deadband). seas_eps=0.25 cut class flips 18.3% -> 2.8%.
+seas_eps          <- 0.25     # seasonality threshold deadband (rel.; 0 = off)
 
 climate_dirs  <- sub("/+$", "", strsplit(.settings$CLIMATE_DIR, ":")[[1]])  # search list
 climate_dir   <- climate_dirs[1]                                            # legacy (stage 01a)
