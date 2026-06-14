@@ -1,6 +1,6 @@
 # cropCalendars NEWS
 
-## 0.3.0 — annual sliding-window pipeline
+## 0.2.0 — annual sliding-window pipeline
 
 ### Major
 - **Pipeline rebuilt from a 10-year-step scheme to an annual 30-yr sliding window**
@@ -86,9 +86,9 @@
   (`ggcmi_landcells.csv`). Tunables centralised in `00_config.R`;
   `enms`/`syears`/`eyears`/`ccal_years` removed.
 
-## 0.2.0 (branch fix-alg-vectorize-phu)
+### Earlier on this branch (vectorisation, engine, I/O — pre-annual-refactor)
 
-### Changes
+#### Changes
 
 - **`generateCropCalTSerie_isimip3` (performance, ~16× on a GFDL-ESM4 test, 9.3 min → 35 s)**:
   vectorise the array-fill loop (one flat-index assignment instead of a per-pixel × per-year
@@ -111,7 +111,7 @@
   net-radiation estimate. With `swdown`/`lwdown` supplied (observed Rn), PET no longer
   depends on latitude/day-of-year.
 
-### Bug fixes
+#### Bug fixes
 
 - **`generateCropCalTSerie_isimip3` — `seasonality` / `harv-reason` encoding**: these two
   ncdf variables were encoded with `as.numeric(as.factor(...))` applied *per pixel*, so the
@@ -177,7 +177,7 @@
   package API was renamed: `wintercrop` → `isWinterCrop`, `calc.vd` → `calcVd`,
   `calc.vrf` → `calcVrf`, `grid$lat` → `grid_df$lat`.
 
-### New features
+#### New features
 
 - **`calcPET` — observed-radiation branch**: when `swdown` (rsds) and `lwdown` (rlds)
   are supplied, net radiation is computed from actual flux observations rather than
@@ -208,7 +208,7 @@
   `do.call(abind, ...)`, pre-allocated output list to avoid O(n²) `rbind` growth,
   reduced progress printing from every pixel to every 500th.
 
-### Performance
+#### Performance
 
 - **`generatePHUTserie_isimip3`**: replaced the `for (i in 1:NCELLS)` cell-by-cell
   loop with fully vectorized operations across all land cells simultaneously:

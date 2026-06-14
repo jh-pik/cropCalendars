@@ -1,28 +1,41 @@
 # Crop Calendar Pipeline — Deployment Hand-off
 
-> **CURRENT STATE (annual sliding-window pipeline).** The pipeline has been rebuilt
-> from the 10-year-step scheme to an **annual 30-yr sliding window** (see
+> **CURRENT STATE (annual sliding-window pipeline, package v0.2.0).** The pipeline has
+> been rebuilt from the 10-year-step scheme to an **annual 30-yr sliding window** (see
 > `METHODOLOGY_AND_CHANGES.md` in the working dir for the full design + change log).
 > Most of the "Context"/"Deployment Plan" sections below describe the **superseded**
 > window-scheme pipeline and are kept only for history. The current pipeline is:
 >
 > - **Config** `00_config.R`: `gcms` + per-GCM `scenarios` matrix; tunables
->   `clm_avg_years=30`, `clm_emit_step=1`, `pet_method="fao56"`, `phu_smooth_window=1`;
->   crops derived from `crop_ls`. `enms`/`syears`/`eyears`/`ccal_years` removed.
+>   `clm_avg_years=30`, `clm_emit_step=1`, `pet_method="fao56"`, `phu_smooth_window=1`,
+>   and the oscillation-suppression knobs `clm_smooth_window=15`, `cross_min_duration=5`,
+>   `wet_window_eps=0.5`, `seas_eps=0.25`. Crops derived from `crop_ls`.
+>   `enms`/`syears`/`eyears`/`ccal_years` removed.
 > - **Climate** `settings.sh` `CLIMATE_DIR`: colon-separated **search list** of official
 >   ISIMIP roots (3b primary+secondary, 3a obsclim/spinclim). Files discovered by
 >   globbing; ensemble member/scenario/year-range read from file names. Cells = the
 >   67420 GGCMI mask in `ggcmi_landcells.csv`.
-> - **Stage 01** `01_compute_annual_calendars.R` (replaces 01a+01b): one job per
->   (GCM, scenario); 30-yr ring buffer; emits annual per-crop calendars. ~24 GB RAM,
->   one node, `mclapply` over cells. Future scenarios seed from historical; opt-in
->   `SAVE_SEED`. Submit: `01_compute_annual_calendars.sh`.
+> - **Stage 01 — use the SPLIT** (`01a_climatology_annual.R` → `01b_calendars_annual.R`).
+>   `01a`: stream climate through the 30-yr ring, write per-year **smoothed** climatology
+>   to disk (fork-free, ~25 GB; ~0.6 GB/yr cache). `01b`: load one year's climatology,
+>   `calcCropCalendars` via `mclapply` → annual per-crop calendars (no ring at the fork →
+>   no OOM, full 64 cores; ~20 min Maize / ~2.5 h 7 crops; `YEARS=`/`CROPS=` dev subsets).
+>   The single-pass `01_compute_annual_calendars.R` still works but **must** run with
+>   `R_GC_MEM_GROW=0` and ≤40 workers (else the ring + output held live across the 64-way
+>   fork OOMs at ~340 GB — see METHODOLOGY §6). Future scenarios seed from historical
+>   (`SAVE_SEED`). Submit: `01a_*.sh` then `01b_*.sh`.
+> - **Oscillation suppression (v0.2.0)** — three independent, default-off fixes calibrated
+>   on GFDL-ESM4 (per-cell mean year-to-year sowing change 1.94→0.55 d): daily-climatology
+>   smoothing + sustained-crossing (`clm_smooth_window`/`cross_min_duration`, temperature
+>   branch); distance-weighted wettest-window selection (`wet_window_eps`, PREC near-tie);
+>   seasonality-threshold deadband (`seas_eps`, class flips). See METHODOLOGY §6.
 > - **Stage 02** `02_assemble_annual_ncdf.R` (replaces old 02 + **04–07**): writes the
 >   DRS-compliant NetCDF in one pass (final names, 1601 time axis, ascending lat, fill
 >   values, chunking, publish path). Submit: `02_assemble_annual_ncdf.sh`.
 > - **Stage 03** `03_calc_phu_for_lpjml.R`: PHU per year (reads the DRS file).
-> - Open items: header-parity check vs the official ISIMIP reference; regime-shift
->   ε-hysteresis; ISIMIP3a DRS soc/naming for GSWP3.
+> - Open items: full 7-crop combined `01b` for GFDL/historical → regenerate stage-02
+>   NetCDF; roll calibrated settings across the full GCM × scenario matrix; header-parity
+>   check vs the official ISIMIP reference; ISIMIP3a DRS soc/naming for GSWP3.
 
 ## Context (historical — superseded window scheme)
 
