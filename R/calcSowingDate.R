@@ -16,6 +16,17 @@
 #' find spring/fall threshold crossings.
 #' @param seasonality character value indicating the seasonality type as
 #' computed by calcSeasonality
+#' @param prev_wet_doy Integer DOY of last year's wettest-window start (or
+#' \code{NA}), forwarded to \code{calcDoyWetMonth} for temporal hysteresis in the
+#' PREC/PRECTEMP sowing branch. Only used when \code{wet_window_eps > 0}.
+#' @param wet_window_eps Non-negative relative hysteresis band forwarded to
+#' \code{calcDoyWetMonth} (default 0 = off). See \code{?calcDoyWetMonth}.
+#' @param wet_window_drift_gate Integer day distance within which wettest-window
+#' moves are always followed (forwarded to \code{calcDoyWetMonth} as
+#' \code{drift_gate}; default 7). See \code{?calcDoyWetMonth}.
+#' @param cross_min_duration Integer minimum sustained-excursion length (days)
+#' forwarded to \code{calcDoyCrossThreshold} for the spring/fall temperature
+#' crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.
 #' @export
 calcSowingDate <- function(croppar,
                            monthly_temp,
@@ -23,7 +34,11 @@ calcSowingDate <- function(croppar,
                            daily_pet,
                            daily_temp,
                            seasonality,
-                           lat
+                           lat,
+                           prev_wet_doy          = NA_integer_,
+                           wet_window_eps        = 0,
+                           wet_window_drift_gate = 7L,
+                           cross_min_duration    = 1L
                            ) {
 
   # Middle day of each month
@@ -55,7 +70,7 @@ calcSowingDate <- function(croppar,
   } else {
     # "Mild winter" (allowing vernalizing crops)
     firstwinterdoy <- calcDoyCrossThreshold(
-      daily_temp, temp_fall)[["doy_cross_down"]]
+      daily_temp, temp_fall, min_duration = cross_min_duration)[["doy_cross_down"]]
 
   }
 
@@ -69,7 +84,7 @@ calcSowingDate <- function(croppar,
 
   # First day of spring
   firstspringdoy   <- calcDoyCrossThreshold(
-    daily_temp, temp_spring)[["doy_cross_up"]]
+    daily_temp, temp_spring, min_duration = cross_min_duration)[["doy_cross_up"]]
   firstspringmonth <- ifelse(
     firstspringdoy == -9999, DEFAULT_MONTH, doy2month(firstspringdoy)
     )
@@ -110,7 +125,9 @@ calcSowingDate <- function(croppar,
 
     } else if (seasonality == "PREC" || seasonality == "PRECTEMP") {
 
-      sowing_doy <- calcDoyWetMonth(daily_prec, daily_pet)
+      sowing_doy <- calcDoyWetMonth(daily_prec, daily_pet,
+                                    prev_doy = prev_wet_doy, eps = wet_window_eps,
+                                    drift_gate = wet_window_drift_gate)
       sowing_month <- doy2month(sowing_doy)
       sowing_season <- "spring"
 

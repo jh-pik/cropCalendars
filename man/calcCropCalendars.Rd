@@ -9,7 +9,14 @@ calcCropCalendars(
   lat = NULL,
   mclimate = NULL,
   crop = NULL,
-  croppar_file = NULL
+  croppar_file = NULL,
+  crop_parameters = NULL,
+  prev_wet_doy = NA_integer_,
+  wet_window_eps = 0,
+  wet_window_drift_gate = 7L,
+  cross_min_duration = 1L,
+  prev_seas = NA_character_,
+  seas_eps = 0
 )
 }
 \arguments{
@@ -24,6 +31,39 @@ function.}
 
 \item{croppar_file}{Crop parameter file. If not specified, the default one is
 used.}
+
+\item{crop_parameters}{Optional pre-extracted crop-parameter row (one row
+\code{data.frame}, as returned by \code{getCropParam}). When supplied, the
+parameter file is not read — essential when calling this per cell in a loop
+(avoids re-reading the CSV on every call). \code{crop}/\code{croppar_file}
+are then ignored.}
+
+\item{prev_wet_doy}{Integer DOY of last year's wettest-window start (or
+\code{NA}), forwarded to \code{calcSowingDate}/\code{calcDoyWetMonth} for
+temporal hysteresis (sliding-window pipeline). Only used when
+\code{wet_window_eps > 0}. The wettest-window argmax is crop-independent, so
+this state is per-cell. The resolved DOY is also returned as
+\code{attr(., "wet_doy")} for the caller to carry forward.}
+
+\item{wet_window_eps}{Non-negative relative hysteresis band forwarded to
+\code{calcDoyWetMonth} (default 0 = off). See \code{?calcDoyWetMonth}.}
+
+\item{wet_window_drift_gate}{Integer day distance within which wettest-window
+moves are always followed (forwarded to \code{calcDoyWetMonth}; default 7).}
+
+\item{cross_min_duration}{Integer minimum sustained-excursion length (days)
+forwarded to \code{calcSowingDate}/\code{calcHarvestDateVector} ->
+\code{calcDoyCrossThreshold} (default 1 = off). See
+\code{?calcDoyCrossThreshold}.}
+
+\item{prev_seas}{Character seasonality class from last year (or \code{NA}),
+forwarded to \code{calcSeasonality} for class hysteresis. The class is
+crop-independent, so this is per-cell state; the resolved class is returned as
+\code{attr(., "seas_type")} for the caller to carry forward. See
+\code{?calcSeasonality}.}
+
+\item{seas_eps}{Non-negative seasonality-threshold deadband forwarded to
+\code{calcSeasonality} (default 0 = off).}
 }
 \description{
 Wrapper function calling sub-functions to

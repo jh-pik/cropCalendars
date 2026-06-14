@@ -76,8 +76,10 @@ pushClimateYear <- function(ring, temp, prec, dates,
 }
 
 #' @rdname slidingMonthlyClimate
+#' @param smooth_window Integer odd day-window for circularly smoothing the daily
+#'   climatologies, forwarded to \code{finalizeMonthlyClimate} (0/1 = off).
 #' @export
-ringClimatology <- function(ring) {
+ringClimatology <- function(ring, smooth_window = 0L) {
   if (ring$count == 0L) stop("Empty ring: push at least one year first.")
-  finalizeMonthlyClimate(ring$run)
+  finalizeMonthlyClimate(ring$run, smooth_window = smooth_window)
 }

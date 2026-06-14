@@ -5,9 +5,20 @@
 ### Major
 - **Pipeline rebuilt from a 10-year-step scheme to an annual 30-yr sliding window**
   (`R/slidingMonthlyClimate.R` ring buffer; calendars computed every year, smooth and
-  rule-consistent, so the output moving average is dropped). New driver
-  `utils/ggcmi_ph3/01_compute_annual_calendars.R` replaces `01a`+`01b`. Future
-  scenarios seed the ring from historical climate; opt-in seed cache (`SAVE_SEED`).
+  rule-consistent, so the output moving average is dropped). Driver
+  `utils/ggcmi_ph3/01_compute_annual_calendars.R` (single-pass) — or the split below.
+  Future scenarios seed the ring from historical climate; opt-in seed cache (`SAVE_SEED`).
+- **Stage 01 split into 01a (climatology) + 01b (calendars)** for RAM safety and fast
+  rule iteration (`utils/ggcmi_ph3/01a_climatology_annual.R`, `01b_calendars_annual.R`).
+  `01a` streams the raw climate through the ring and writes the per-year smoothed
+  climatology to disk (fork-free; bounded ~25 GB). `01b` loads one year's climatology at
+  a time and runs `calcCropCalendars` via `mclapply` — so the heavy ring buffer is NOT
+  live in the parent during the 64-worker fork, which removes the copy-on-write OOM
+  (the single-pass driver held the ~24 GB ring+output across the fork → 340 GB at 64
+  cores; see `R_GC_MEM_GROW=0` note in the `.sh`). 01b re-runs in minutes on any
+  sowing/harvest rule change without re-reading the raw climate. Both take a `YEARS=`
+  env subset (e.g. `"2000:2014"`) for dev iteration. Cost: ~0.6 GB/year climatology
+  cache (~100 GB for a 165-yr historical run), regenerable.
 - **Stage 02** (`utils/ggcmi_ph3/02_assemble_annual_ncdf.R`) writes the
   publication-ready ISIMIP3b DRS NetCDF in one pass (final variable names,
   "years since 1601" time axis, **ascending latitude**, `_FillValue`/`missing_value`,
@@ -18,6 +29,48 @@
 - `calcDoyWetMonth` + `hd_wetseas` use **ΣP/ΣPET** (ratio of summed P and PET) from new
   daily `dprec`/`dpet` climatologies, fixing P/PET blow-ups where PET≈0 (spurious
   ~80-day sowing flips in monsoon cells).
+- `calcDoyWetMonth` gains **distance-weighted, max-normalised selection** (`prev_doy`,
+  `eps`) for the sliding window: ~57 % of PREC/PRECTEMP cells have a second 120-day
+  ΣP/ΣPET peak within 10 % of the best, so the plain argmax flips between far-apart peaks
+  between adjacent years (sowing, and the sowing-anchored harvest, oscillate). The window
+  is now chosen as `argmax( (ws/max ws) · max(1 − eps·Δ/(365/2), 0) )`, where `Δ` is the
+  circular DOY distance to last year's window. Near peaks are essentially free (the same
+  peak drifts), a far peak is penalised but — since the weight floors at `1−eps`, never 0 —
+  still wins when decisively better (genuine regime shift). Normalising by the year's best
+  makes `eps` dimensionless; `wet_window_eps = 0.5` (config) cut the wet-cell mean
+  year-to-year jump 1.59 → 0.13 d and cells-ever-flipping 0.257 → 0.077 on GFDL-ESM4.
+  `eps = 0` (or no `prev_doy`) reproduces the plain argmax — backward compatible.
+  (`drift_gate` is deprecated/ignored; the smooth weight subsumes the old small-move gate.)
+- `calcSeasonality` gains **threshold-deadband hysteresis** (`prev_seas`, `seas_eps`,
+  `mtemp_margin`): ~18 % of cells flip their seasonality *class* between years by grazing a
+  classifier threshold (`CV_prec` vs 0.4, `CV_temp` vs 0.010, `min_temp` vs 10 °C), which
+  swaps the entire sowing rule. Each threshold is now relaxed toward keeping last year's
+  class (thermostat deadband: a test the previous class was on the high side of uses
+  `thr·(1−seas_eps)`, else `thr·(1+seas_eps)`; the `min_temp` test uses an absolute
+  `mtemp_margin` °C). `seas_eps = 0.25` (config) cut year-to-year class flips 18.3 % →
+  2.8 %. Class is crop-independent, so the resolved class is returned as
+  `attr(., "seas_type")` and carried per-cell by the driver. `seas_eps = 0` reproduces the
+  plain Waha thresholds — backward compatible.
+- **Daily-climatology smoothing + sustained-crossing guard** — the dominant source of
+  year-to-year sowing/harvest oscillation was traced to the *temperature* branch, not the
+  wet-window: the per-DOY daily means (`dtemp`/`dprec`/`dpet`) carry ~1 °C / spiky
+  day-to-day jitter, and the point detectors (`calcDoyCrossThreshold` for the spring/fall
+  temperature crossings, and the wet-season-end P/PET crossing in `calcHarvestDateVector`)
+  latch onto single-day blips. A 1-day dip-and-recover through `temp_spring` in the autumn
+  descent produces a spurious "first" up-crossing ~130 days before the real spring
+  crossing, and sub-1 °C differences between 30-yr windows flip which side wins (verified
+  on GFDL-ESM4 cell 136.25/−33.25, S. Australia). Two fixes: (a)
+  `finalizeMonthlyClimate(smooth_window=)` applies a centred **circular running mean** to
+  the daily climatologies (config `clm_smooth_window`, default 15 d; threaded via
+  `ringClimatology`); (b) `calcDoyCrossThreshold(min_duration=)` accepts a crossing only if
+  the excursion **persists** that many days (config `cross_min_duration`, default 5;
+  threaded through `calcSowingDate`/`calcHarvestDateVector`/`calcCropCalendars`). Smoothing
+  is the decisive lever (collapses the bistable flip to the genuine spring crossing); the
+  duration guard is a secondary net. The 120-day wet-window argmax is essentially unchanged
+  (already integrates 120 d). `smooth_window ≤ 1` and `min_duration = 1` reproduce the
+  prior behaviour exactly — backward compatible. The wet-window hysteresis is now **off by
+  default** (`wet_window_eps = 0`); it remains available for the genuine PREC-branch
+  bimodal near-tie, which smoothing does not address.
 - `calcHarvestDateVector` harvest dates evaluated on the **daily** climatology:
   `hd_temp_base` = centre of the warmest 30-day window (was warmest-month mid-day);
   `hd_wetseas`/`hd_temp_opt` fixed (had computed month indices as DOYs).

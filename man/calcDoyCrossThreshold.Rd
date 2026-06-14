@@ -4,14 +4,41 @@
 \alias{calcDoyCrossThreshold}
 \title{Calculate day of crossing threshold}
 \usage{
-calcDoyCrossThreshold(monthly_value, threshold)
+calcDoyCrossThreshold(daily_value, threshold, min_duration = 1L)
 }
 \arguments{
-\item{monthly_value}{numeric vector of length 12 representing monthly value
-of a variable.}
+\item{daily_value}{Numeric vector of length 365. Climatological daily
+values of the variable (e.g. temperature), one per DOY, averaged across
+the reference period. Typically the \code{dtemp} element returned by
+\code{calcMonthlyClimate}.}
 
-\item{threshold}{numeric value representing a threshold.}
+\item{threshold}{Numeric. Threshold value for crossing detection.}
+
+\item{min_duration}{Integer >= 1. Minimum number of consecutive days the
+excursion must persist for a crossing to count (a "sustained-excursion"
+guard). With \code{min_duration = 1L} (default) the behaviour is unchanged:
+the first day-to-day sign change is returned. With larger values, a crossing
+is only accepted if the variable stays on the new side of \code{threshold}
+for at least \code{min_duration} days (evaluated circularly), so a single-day
+noise blip in the daily climatology cannot register as a spurious crossing
+(e.g. a 1-day dip-and-recover through \code{temp_spring} in the autumn
+descent producing a sowing date ~130 days early).}
+}
+\value{
+Named list with two elements:
+  \describe{
+    \item{doy_cross_up}{First DOY where \code{daily_value} crosses upward
+      through \code{threshold} (i.e. was below on the previous day, at or
+      above today) and stays above for \code{min_duration} days. \code{-9999}
+      if no such upward crossing exists.}
+    \item{doy_cross_down}{First DOY where \code{daily_value} crosses
+      downward through \code{threshold} and stays below for
+      \code{min_duration} days. \code{-9999} if none.}
+  }
 }
 \description{
-Calculate days where thresholds are crossed from monthly values
+Find the DOY where a climatological daily variable crosses a
+threshold, evaluated on actual daily data (365 values per DOY, averaged
+across years). The comparison wraps circularly so crossings between
+December 31 and January 1 are detected.
 }

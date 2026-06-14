@@ -10,7 +10,11 @@ calcHarvestDateVector(
   sowing_season,
   monthly_temp,
   monthly_ppet,
-  monthly_ppet_diff
+  monthly_ppet_diff,
+  daily_temp = NULL,
+  daily_prec = NULL,
+  daily_pet = NULL,
+  cross_min_duration = 1L
 )
 }
 \arguments{
@@ -29,6 +33,24 @@ calcSowingDate.}
 
 \item{monthly_ppet_diff}{numeric vestor of length 12. Mean difference of
 Potential Evapotranspiration (mm). See caclMonthlyClimate.}
+
+\item{daily_temp}{numeric vector of length 365. Climatological daily mean
+temperature (deg C), one value per DOY (the \code{dtemp} element from
+\code{calcMonthlyClimate}). If \code{NULL}, it is interpolated from
+\code{monthly_temp}.}
+
+\item{daily_prec}{numeric vector of length 365. Climatological daily
+precipitation (mm) per DOY (the \code{dprec} element from
+\code{calcMonthlyClimate}). Used with \code{daily_pet} to form the spike-free
+daily P/PET (ratio of per-DOY means) for the wet-season-end crossing. If
+\code{NULL}, the daily P/PET is interpolated from \code{monthly_ppet} instead.}
+
+\item{daily_pet}{numeric vector of length 365. Climatological daily PET (mm)
+per DOY (the \code{dpet} element from \code{calcMonthlyClimate}).}
+
+\item{cross_min_duration}{integer minimum sustained-excursion length (days)
+forwarded to \code{calcDoyCrossThreshold} for the wet-season-end and
+hot-day crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.}
 }
 \description{
 Harvest reasons are the events that can trigger the harvest
@@ -39,6 +61,13 @@ Latest-maturing cultivar (GPmax);
 Escape terminal water stress (w. lim);
 Grain filling in warmest period (mid. t.);
 Escape high temperature (high t.).
+
+The temperature- and water-driven harvest dates (\code{hd_wetseas},
+\code{hd_temp_base}, \code{hd_temp_opt}) are evaluated on the \emph{daily}
+climatology, consistent with \code{calcSowingDate}. Evaluating them on the
+12 monthly values instead quantises these dates to whole months, which makes
+the resulting harvest dates flip by ~30 days between climate windows (e.g.
+when the warmest month alternates between July and August).
 }
 \seealso{
 getCropParam, calcMonthlyClimate, calcSowingDate, calcCropCalendars

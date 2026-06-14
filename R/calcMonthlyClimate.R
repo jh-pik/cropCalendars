@@ -38,6 +38,9 @@
 #'   \code{lat} and \code{day} (used internally for date handling and the PT
 #'   orbital path) are not passed to \code{calcPET_FAO56}, which uses full
 #'   24 h fluxes and requires no geometric daylength.
+#' @param smooth_window Integer odd day-window for circularly smoothing the daily
+#'   climatologies (\code{dtemp}, \code{dprec}, \code{dpet}), forwarded to
+#'   \code{finalizeMonthlyClimate}. 0/1 (default) = no smoothing.
 #'
 #' @return list with five monthly vectors (length 12) and two daily vectors
 #' (length 365):
@@ -71,7 +74,8 @@ calcMonthlyClimate <- function(lat        = NULL,
                                lwdown     = NULL,
                                windspeed  = NULL,
                                humid      = NULL,
-                               ps         = 101325
+                               ps         = 101325,
+                               smooth_window = 0L
                                ) {
 
   pet_method <- match.arg(pet_method)
@@ -109,7 +113,7 @@ calcMonthlyClimate <- function(lat        = NULL,
     )
   }
 
-  mclm <- finalizeMonthlyClimate(acc)
+  mclm <- finalizeMonthlyClimate(acc, smooth_window = smooth_window)
   for (f in c("mtemp", "mprec", "mpet", "mppet", "mppet_diff")) {
     names(mclm[[f]]) <- seq_len(12)
   }

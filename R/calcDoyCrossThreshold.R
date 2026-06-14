@@ -10,18 +10,29 @@
 #'   the reference period. Typically the \code{dtemp} element returned by
 #'   \code{calcMonthlyClimate}.
 #' @param threshold Numeric. Threshold value for crossing detection.
+#' @param min_duration Integer >= 1. Minimum number of consecutive days the
+#'   excursion must persist for a crossing to count (a "sustained-excursion"
+#'   guard). With \code{min_duration = 1L} (default) the behaviour is unchanged:
+#'   the first day-to-day sign change is returned. With larger values, a crossing
+#'   is only accepted if the variable stays on the new side of \code{threshold}
+#'   for at least \code{min_duration} days (evaluated circularly), so a single-day
+#'   noise blip in the daily climatology cannot register as a spurious crossing
+#'   (e.g. a 1-day dip-and-recover through \code{temp_spring} in the autumn
+#'   descent producing a sowing date ~130 days early).
 #'
 #' @return Named list with two elements:
 #'   \describe{
 #'     \item{doy_cross_up}{First DOY where \code{daily_value} crosses upward
 #'       through \code{threshold} (i.e. was below on the previous day, at or
-#'       above today). \code{-9999} if no upward crossing exists.}
+#'       above today) and stays above for \code{min_duration} days. \code{-9999}
+#'       if no such upward crossing exists.}
 #'     \item{doy_cross_down}{First DOY where \code{daily_value} crosses
-#'       downward through \code{threshold}. \code{-9999} if none.}
+#'       downward through \code{threshold} and stays below for
+#'       \code{min_duration} days. \code{-9999} if none.}
 #'   }
 #' @export
 
-calcDoyCrossThreshold <- function(daily_value, threshold) {
+calcDoyCrossThreshold <- function(daily_value, threshold, min_duration = 1L) {
 
   n <- length(daily_value)
 
@@ -30,11 +41,24 @@ calcDoyCrossThreshold <- function(daily_value, threshold) {
 
   cross <- as.integer(is_above) - as.integer(is_above_prev)
 
-  day_cross_up   <- which(cross ==  1L)[1]
-  day_cross_down <- which(cross == -1L)[1]
+  up_cand   <- which(cross ==  1L)
+  down_cand <- which(cross == -1L)
 
-  if (is.na(day_cross_up))   day_cross_up   <- -9999L
-  if (is.na(day_cross_down)) day_cross_down <- -9999L
+  # Sustained-excursion guard: keep only crossings that persist on the new side
+  # of the threshold for >= min_duration consecutive days (evaluated circularly).
+  if (min_duration > 1L) {
+    persists <- function(d, want) {
+      idx <- ((d - 1L + 0:(min_duration - 1L)) %% n) + 1L
+      all(is_above[idx] == want)
+    }
+    if (length(up_cand))
+      up_cand   <- up_cand[vapply(up_cand,   persists, logical(1), want = TRUE)]
+    if (length(down_cand))
+      down_cand <- down_cand[vapply(down_cand, persists, logical(1), want = FALSE)]
+  }
+
+  day_cross_up   <- if (length(up_cand))   up_cand[1]   else -9999L
+  day_cross_down <- if (length(down_cand)) down_cand[1] else -9999L
 
   return(list("doy_cross_up"   = day_cross_up,
               "doy_cross_down" = day_cross_down))

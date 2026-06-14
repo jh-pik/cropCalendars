@@ -4,17 +4,56 @@
 \alias{calcSowingDate}
 \title{Calculate sowing date (Waha et al., 2012)}
 \usage{
-calcSowingDate(croppar, monthly_temp, monthly_ppet, seasonality, lat)
+calcSowingDate(
+  croppar,
+  monthly_temp,
+  daily_prec,
+  daily_pet,
+  daily_temp,
+  seasonality,
+  lat,
+  prev_wet_doy = NA_integer_,
+  wet_window_eps = 0,
+  wet_window_drift_gate = 7L,
+  cross_min_duration = 1L
+)
 }
 \arguments{
 \item{monthly_temp}{Numeric vector of length 12. Average (e.g. 20-years)
-monthly mean temperatures (degree Celsius).}
+monthly mean temperatures (degree Celsius). Used for seasonality type
+classification and to identify the coldest month.}
 
-\item{monthly_ppet}{Numeric vector of length 12. Average (e.g. 20-years)
-monthly P/PET ratio.}
+\item{daily_prec}{Numeric vector of length 365. Climatological daily
+precipitation (mm, one value per DOY, averaged across years). The
+\code{dprec} element from \code{calcMonthlyClimate}. Used by
+\code{calcDoyWetMonth} (with \code{daily_pet}) to find the start of the wet
+season as the wettest 120-day window (\eqn{\sum P / \sum PET}).}
+
+\item{daily_pet}{Numeric vector of length 365. Climatological daily PET (mm,
+one value per DOY). The \code{dpet} element from \code{calcMonthlyClimate}.}
+
+\item{daily_temp}{Numeric vector of length 365. Climatological daily mean
+temperature (°C), one value per DOY. Typically the \code{dtemp} element
+from \code{calcMonthlyClimate}. Used by \code{calcDoyCrossThreshold} to
+find spring/fall threshold crossings.}
 
 \item{seasonality}{character value indicating the seasonality type as
 computed by calcSeasonality}
+
+\item{prev_wet_doy}{Integer DOY of last year's wettest-window start (or
+\code{NA}), forwarded to \code{calcDoyWetMonth} for temporal hysteresis in the
+PREC/PRECTEMP sowing branch. Only used when \code{wet_window_eps > 0}.}
+
+\item{wet_window_eps}{Non-negative relative hysteresis band forwarded to
+\code{calcDoyWetMonth} (default 0 = off). See \code{?calcDoyWetMonth}.}
+
+\item{wet_window_drift_gate}{Integer day distance within which wettest-window
+moves are always followed (forwarded to \code{calcDoyWetMonth} as
+\code{drift_gate}; default 7). See \code{?calcDoyWetMonth}.}
+
+\item{cross_min_duration}{Integer minimum sustained-excursion length (days)
+forwarded to \code{calcDoyCrossThreshold} for the spring/fall temperature
+crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.}
 }
 \description{
 Calculate sowing date (Waha et al., 2012)

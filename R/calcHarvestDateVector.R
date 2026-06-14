@@ -37,6 +37,9 @@
 #' \code{NULL}, the daily P/PET is interpolated from \code{monthly_ppet} instead.
 #' @param daily_pet numeric vector of length 365. Climatological daily PET (mm)
 #' per DOY (the \code{dpet} element from \code{calcMonthlyClimate}).
+#' @param cross_min_duration integer minimum sustained-excursion length (days)
+#' forwarded to \code{calcDoyCrossThreshold} for the wet-season-end and
+#' hot-day crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.
 #'
 #' @seealso getCropParam, calcMonthlyClimate, calcSowingDate, calcCropCalendars
 #' @export
@@ -48,7 +51,8 @@ calcHarvestDateVector <- function(croppar,
                                   monthly_ppet_diff,
                                   daily_temp = NULL,
                                   daily_prec = NULL,
-                                  daily_pet  = NULL
+                                  daily_pet  = NULL,
+                                  cross_min_duration = 1L
                                   ) {
 
   # Extract individual parameter names and values
@@ -84,11 +88,13 @@ calcHarvestDateVector <- function(croppar,
   # End of wet season ----
   doy_wet1 <- calcDoyCrossThreshold(
     daily_ppet,
-    ppet_ratio
+    ppet_ratio,
+    min_duration = cross_min_duration
     )[["doy_cross_down"]]
   doy_wet2 <- calcDoyCrossThreshold(
     daily_ppet_diff,
-    ppet_ratio_diff
+    ppet_ratio_diff,
+    min_duration = cross_min_duration
     )[["doy_cross_down"]]
   doy_wet_vec <- ifelse(
     c(doy_wet1, doy_wet2) < sowing_date & c(doy_wet1, doy_wet2) != -9999,
@@ -122,7 +128,7 @@ calcHarvestDateVector <- function(croppar,
 
   # First hot day ----
   doy_exceed_opt_rp <- calcDoyCrossThreshold(
-    daily_temp, temp_opt_rphase
+    daily_temp, temp_opt_rphase, min_duration = cross_min_duration
     )[["doy_cross_up"]]
   idx <- which(doy_exceed_opt_rp < sowing_date & doy_exceed_opt_rp != -9999)
   doy_exceed_opt_rp[idx] <- doy_exceed_opt_rp[idx] + ndays_year
@@ -131,7 +137,8 @@ calcHarvestDateVector <- function(croppar,
   # Last hot day ----
   doy_below_opt_rp <- calcDoyCrossThreshold(
     daily_temp,
-    temp_opt_rphase
+    temp_opt_rphase,
+    min_duration = cross_min_duration
     )[["doy_cross_down"]]
   idx <- which(doy_below_opt_rp < sowing_date & doy_below_opt_rp != -9999)
   doy_below_opt_rp[idx] <- doy_below_opt_rp[idx] + ndays_year

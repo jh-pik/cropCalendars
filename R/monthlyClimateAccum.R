@@ -106,8 +106,17 @@ addYearMonthlyClimate <- function(acc, temp, prec, dates,
 }
 
 #' @rdname monthlyClimateAccum
+#' @param smooth_window Integer odd day-window for circularly smoothing the daily
+#'   climatologies (\code{dtemp}, \code{dprec}, \code{dpet}) before they are
+#'   returned. \code{0}/\code{1} (default) = no smoothing. Larger values apply a
+#'   centred circular running mean that removes the sub-window day-to-day jitter
+#'   in the per-DOY means, which otherwise makes \code{calcDoyCrossThreshold}
+#'   register spurious 1-day crossings (see that function and the wet-season-end
+#'   harvest rule, which consume the daily series through point detectors). The
+#'   120-day wettest-window argmax is essentially unaffected (it already
+#'   integrates over 120 days).
 #' @export
-finalizeMonthlyClimate <- function(acc) {
+finalizeMonthlyClimate <- function(acc, smooth_window = 0L) {
   if (acc$nyears == 0L) stop("No years accumulated.")
   mtemp      <- round(acc$M_tas  / acc$nyears, 5)
   mprec      <- round(acc$M_pr   / acc$nyears, 5)
@@ -119,9 +128,41 @@ finalizeMonthlyClimate <- function(acc) {
   dprec      <- sweep(acc$D_prsum,  2, acc$D_cnt, "/")
   dpet       <- sweep(acc$D_petsum, 2, acc$D_cnt, "/")
 
+  if (smooth_window > 1L) {
+    dtemp <- .circSmooth(dtemp, smooth_window)
+    dprec <- .circSmooth(dprec, smooth_window)
+    dpet  <- .circSmooth(dpet,  smooth_window)
+  }
+
   out <- list(mtemp = mtemp, mprec = mprec, mpet = mpet, mppet = mppet,
               mppet_diff = mppet_diff, dtemp = dtemp, dppet = dppet,
               dprec = dprec, dpet = dpet)
   if (acc$ncells == 1L) out <- lapply(out, as.vector) # match per-pixel contract
   out
+}
+
+# Centred circular running mean over the DOY (column) dimension of a
+# [cells x ndays] daily-climatology matrix (or a single ndays vector). The window
+# is forced odd so it is symmetric. Implemented as a sliding running sum (one
+# column added / one dropped per step) so the only large allocation is the output
+# matrix itself — no [cells x ndays] cumsum/padding copies, which (lingering into
+# the 64-way mclapply fork in the driver) doubled peak RSS and triggered an OOM.
+.circSmooth <- function(X, w) {
+  w <- as.integer(w)
+  if (w <= 1L) return(X)
+  vec <- is.null(dim(X))
+  if (vec) X <- matrix(X, nrow = 1L)
+  n <- ncol(X); h <- (w - 1L) %/% 2L; w <- 2L * h + 1L          # force odd
+  S  <- matrix(0, nrow(X), n)
+  win <- ((-h:h) %% n) + 1L                                      # 2h+1 cols centred at col 1
+  rs  <- rowSums(X[, win, drop = FALSE])
+  S[, 1L] <- rs
+  for (d in 2:n) {
+    out_col <- ((d - 2L - h) %% n) + 1L                          # column leaving the window
+    in_col  <- ((d - 1L + h) %% n) + 1L                          # column entering
+    rs <- rs - X[, out_col] + X[, in_col]
+    S[, d] <- rs
+  }
+  S <- S / w
+  if (vec) as.vector(S) else S
 }
