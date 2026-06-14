@@ -12,11 +12,18 @@ generatePHUTserie_isimip3 <- function(
     EYs           = NULL,
     FYnc          = NULL,
     LYnc          = NULL,
+    grid_df       = NULL,
     crop_par_file = NULL,
     ncfile        = NULL,
     smooth_window = 1L
 
 ) {
+  # grid_df (LPJmL grid: data.frame with lon/lat) is now an explicit argument rather
+  # than a global read from the caller's environment. years/nyears are derived from
+  # FYnc:LYnc here for the same reason (they were the only remaining hidden globals).
+  if (is.null(grid_df)) stop("generatePHUTserie_isimip3: grid_df (LPJmL grid) is required.")
+  years  <- FYnc:LYnc
+  nyears <- length(years)
   # smooth_window (years, odd, default 1): widens ONLY the temperature averaging
   # used for the heat-unit sum, centred on each period, clamped to [FYnc, LYnc].
   # With 1 (default) the PHU matches the growing period of that period exactly (the
@@ -177,9 +184,9 @@ generatePHUTserie_isimip3 <- function(
 
 
   # ------------------------------------------------------#
-  # Save intermediate result ----
-  tmp_dir <- paste0(work_dir, "/tmp/")
-  if (!dir.exists(tmp_dir)) dir.create(tmp_dir)
+  # Save intermediate result ----  (under the output dir, not a global work_dir)
+  tmp_dir <- paste0(ncdir, "tmp/")
+  if (!dir.exists(tmp_dir)) dir.create(tmp_dir, recursive = TRUE)
 
   fn <- paste0(tmp_dir,
                crop_ls[["ggcmi"]][cr], "_",
@@ -187,16 +194,6 @@ generatePHUTserie_isimip3 <- function(
                gcm, "_", scen, "_", FYnc, "-", LYnc,
                "_ggcmi_ph3_rule_based_phu.Rdata")
   save(phu.cube, file = fn)
-
-  # Repeat same phu value for the entire time period (for 2015gs scenario)
-  if (max(LYs) != LYnc) {
-    ys <- which(years %in% FYnc:LYnc)
-    for (j in seq_len(length(ys))) {
-      phu.cube[, , ys[j]] <- phu.annual
-    }
-    save(phu.cube, file = fn)
-  }
-
 
   # ------------------------------------------------------#
   # Write Crop-specific Output File ----

@@ -107,7 +107,7 @@ AR <- list(planting_day = to_grid(pd), maturity_day = to_grid(md), growing_perio
 FV <- 1.0e20
 londim <- ncdim_def("lon", "degrees_east",  lons, longname = "longitude")
 latdim <- ncdim_def("lat", "degrees_north", lats, longname = "latitude")
-timdim <- ncdim_def("time", "years since 1601-1-1 00:00:00", years_nc - 1601L,
+timdim <- ncdim_def("time", "years since 1601-1-1 00:00:00", as.double(years_nc - 1601L),
                     unlim = TRUE, longname = "time", calendar = "standard")
 diml <- list(londim, latdim, timdim); chk <- c(nlon, nlat, 1L)
 def <- function(name, units, long) ncvar_def(name, units, diml, missval = FV, longname = long,

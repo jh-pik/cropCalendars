@@ -21,14 +21,13 @@ makeplot <- TRUE
 
 # Read the LPJmL grid here (the only stage that needs it, for the .clm output).
 # lpjmlkit::read_io auto-detects the header; round to the grid's native 0.01-degree
-# resolution. grid_df / NCELLS are read as globals by generatePHUTserie_isimip3().
+# resolution. grid_df is passed explicitly to generatePHUTserie_isimip3().
 library(lpjmlkit)
 grid_io <- suppressWarnings(read_io(grid_file, silent = TRUE))
 grid_df <- data.frame(
   lon = round(as.numeric(grid_io$data[, 1, 1]), 2),
   lat = round(as.numeric(grid_io$data[, 1, 2]), 2)
 )
-NCELLS  <- nrow(grid_df)
 
 # ------------------------------------ #
 # Individual-run settings
@@ -57,15 +56,11 @@ FYnc <- prod_range[1]; LYnc <- prod_range[2]
 
 # Annual product: one "period" per year, so the PHU matches each year's growing
 # period exactly. PHU_SMOOTH_WINDOW (default 1) optionally widens the temperature
-# averaging only. LYs is a global read by generatePHUTserie (= LYnc skips the
-# legacy 2015gs branch).
-SYs <- FYnc:LYnc; EYs <- FYnc:LYnc; LYs <- LYnc
+# averaging only.
+SYs <- FYnc:LYnc; EYs <- FYnc:LYnc
 smooth_window <- as.integer(Sys.getenv("PHU_SMOOTH_WINDOW", as.character(phu_smooth_window)))
 cat(sprintf("PHU: %s %s %s_%s | years %d-%d | smooth_window=%d\n",
             gcm, scen, cro, irri, FYnc, LYnc, smooth_window))
-
-years  <- FYnc:LYnc
-nyears <- length(years)
 
 ncdir  <- paste0(output_dir, "crop_calendars/ncdf/", gcm, "/", scen, "/")  # PHU .nc4 output
 if (!dir.exists(ncdir)) dir.create(ncdir, recursive = TRUE)
@@ -91,6 +86,7 @@ generatePHUTserie_isimip3(
     EYs           = EYs,
     FYnc          = FYnc,
     LYnc          = LYnc,
+    grid_df       = grid_df,
     crop_par_file = NULL,
     ncfile        = ncfile,
     smooth_window = smooth_window
