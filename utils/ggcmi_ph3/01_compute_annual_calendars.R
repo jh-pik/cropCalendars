@@ -36,16 +36,16 @@ ncores <- if (length(args) >= 3) as.integer(args[3]) else
 W         <- clm_avg_years
 emit_step <- as.integer(Sys.getenv("EMIT_STEP", as.character(clm_emit_step)))  # config default
 probe_n   <- as.integer(Sys.getenv("PROBE_NEMIT", "0"))   # 0 = full run
-# Wettest-window hysteresis (config). eps (0 = off) suppresses near-tie argmax
-# flips in semi-arid / monsoon-fringe PREC/PRECTEMP cells; drift_gate is the day
-# distance within which moves are always followed (gradual onset tracking).
-if (!exists("wet_window_eps"))        wet_window_eps        <- 0
-if (!exists("wet_window_drift_gate")) wet_window_drift_gate <- 7L
+# Wettest-window hysteresis (config). wet_window_eps (0 = off) is the distance-weighted
+# selection strength that suppresses near-tie argmax flips in semi-arid / monsoon-fringe
+# PREC/PRECTEMP cells (see ?calcDoyWetMonth).
 # Source-level oscillation fix (config): smooth the daily climatology and require
 # threshold crossings to persist before they count (see 00_config.R).
+if (!exists("wet_window_eps"))        wet_window_eps        <- 0
 if (!exists("clm_smooth_window"))     clm_smooth_window     <- 0L
 if (!exists("cross_min_duration"))    cross_min_duration    <- 1L
 if (!exists("seas_eps"))              seas_eps              <- 0
+if (!exists("seas_mtemp_margin"))     seas_mtemp_margin     <- 1
 
 out_dir <- paste0(output_dir, "/crop_calendars/annual/", scen, "/", gcm, "/")
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
@@ -144,9 +144,9 @@ computeYear <- function(clim, prev_wet, prev_seas) {
       r <- calcCropCalendars(lon = land_lon[j], lat = land_lat[j], mclimate = mcl,
                              crop_parameters = cparams[[ci]],
                              prev_wet_doy = prev_wet[j], wet_window_eps = wet_window_eps,
-                             wet_window_drift_gate = wet_window_drift_gate,
                              cross_min_duration = cross_min_duration,
-                             prev_seas = prev_seas[j], seas_eps = seas_eps)
+                             prev_seas = prev_seas[j], seas_eps = seas_eps,
+                             seas_mtemp_margin = seas_mtemp_margin)
       if (ci == 1L) { wd <- attr(r, "wet_doy"); st <- attr(r, "seas_type") }   # crop-independent
       M[ci, ] <- c(r$sowing_doy[1],
                    ifelse(r$sowing_season[1] == "winter", 1, 2),

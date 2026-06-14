@@ -59,13 +59,14 @@ cross_min_duration <- 5L      # min sustained-excursion days for calcDoyCrossThr
 # free (tracks drift), far peaks must be decisively better to win. eps=0.5 cut the
 # wet-cell mean year-to-year jump 1.59 -> 0.13 and cells-ever-flipping 0.257 -> 0.077.
 wet_window_eps    <- 0.5      # wettest-window distance-weighting strength (0 = plain argmax)
-wet_window_drift_gate <- 7L   # deprecated/ignored (kept for call-site compatibility)
 
 # Seasonality-classifier hysteresis (threshold deadband). ~18% of cells flip their
 # seasonality CLASS year to year (grazing the CV_prec/CV_temp/min_temp thresholds),
-# which swaps the whole sowing rule. seas_eps relaxes each threshold toward keeping
-# last year's class (thermostat deadband). seas_eps=0.25 cut class flips 18.3% -> 2.8%.
-seas_eps          <- 0.25     # seasonality threshold deadband (rel.; 0 = off)
+# which swaps the whole sowing rule. seas_eps relaxes the relative CV thresholds toward
+# keeping last year's class (thermostat deadband); seas_mtemp_margin is the absolute
+# deadband (deg C) on the min-temp threshold. seas_eps=0.25 cut class flips 18.3% -> 2.8%.
+seas_eps          <- 0.25     # seasonality CV-threshold deadband (rel.; 0 = off)
+seas_mtemp_margin <- 1        # seasonality min-temp threshold deadband (deg C)
 
 climate_dirs  <- sub("/+$", "", strsplit(.settings$CLIMATE_DIR, ":")[[1]])  # search list
 climate_dir   <- climate_dirs[1]                                            # legacy (stage 01a)

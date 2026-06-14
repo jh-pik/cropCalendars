@@ -33,9 +33,9 @@ ncores <- if (length(args) >= 3) as.integer(args[3]) else
           as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", "1"))
 
 if (!exists("wet_window_eps"))        wet_window_eps        <- 0
-if (!exists("wet_window_drift_gate")) wet_window_drift_gate <- 7L
 if (!exists("cross_min_duration"))    cross_min_duration    <- 1L
 if (!exists("seas_eps"))              seas_eps              <- 0
+if (!exists("seas_mtemp_margin"))     seas_mtemp_margin     <- 1
 
 parse_years <- function(s) {
   if (is.null(s) || s == "") return(NULL)
@@ -93,9 +93,9 @@ computeYear <- function(clim, prev_wet, prev_seas) {
       r <- calcCropCalendars(lon = land_lon[j], lat = land_lat[j], mclimate = mcl,
                              crop_parameters = cparams[[ci]],
                              prev_wet_doy = prev_wet[j], wet_window_eps = wet_window_eps,
-                             wet_window_drift_gate = wet_window_drift_gate,
                              cross_min_duration = cross_min_duration,
-                             prev_seas = prev_seas[j], seas_eps = seas_eps)
+                             prev_seas = prev_seas[j], seas_eps = seas_eps,
+                             seas_mtemp_margin = seas_mtemp_margin)
       if (ci == 1L) { wd <- attr(r, "wet_doy"); st <- attr(r, "seas_type") }
       M[ci, ] <- c(r$sowing_doy[1],
                    ifelse(r$sowing_season[1] == "winter", 1, 2),

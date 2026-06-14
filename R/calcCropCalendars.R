@@ -22,8 +22,6 @@
 #' \code{attr(., "wet_doy")} for the caller to carry forward.
 #' @param wet_window_eps Non-negative relative hysteresis band forwarded to
 #' \code{calcDoyWetMonth} (default 0 = off). See \code{?calcDoyWetMonth}.
-#' @param wet_window_drift_gate Integer day distance within which wettest-window
-#' moves are always followed (forwarded to \code{calcDoyWetMonth}; default 7).
 #' @param cross_min_duration Integer minimum sustained-excursion length (days)
 #' forwarded to \code{calcSowingDate}/\code{calcHarvestDateVector} ->
 #' \code{calcDoyCrossThreshold} (default 1 = off). See
@@ -35,6 +33,9 @@
 #' \code{?calcSeasonality}.
 #' @param seas_eps Non-negative seasonality-threshold deadband forwarded to
 #' \code{calcSeasonality} (default 0 = off).
+#' @param seas_mtemp_margin Absolute min-temperature deadband (deg C) forwarded to
+#' \code{calcSeasonality} as \code{mtemp_margin} (default 1; only used when
+#' \code{seas_eps > 0}).
 #' @seealso calcMonthlyClimate
 #' @export
 
@@ -46,10 +47,10 @@ calcCropCalendars <- function(lon                   = NULL,
                               crop_parameters       = NULL,
                               prev_wet_doy          = NA_integer_,
                               wet_window_eps        = 0,
-                              wet_window_drift_gate = 7L,
                               cross_min_duration    = 1L,
                               prev_seas             = NA_character_,
-                              seas_eps              = 0
+                              seas_eps              = 0,
+                              seas_mtemp_margin     = 1
                               ) {
 
   # Import crop parameters (unless already supplied by the caller).
@@ -79,7 +80,8 @@ calcCropCalendars <- function(lon                   = NULL,
     monthly_prec = mprec,
     temp_min     = 10,
     prev_seas    = prev_seas,
-    seas_eps     = seas_eps
+    seas_eps     = seas_eps,
+    mtemp_margin = seas_mtemp_margin
   )
 
   # Sowing date
@@ -93,7 +95,6 @@ calcCropCalendars <- function(lon                   = NULL,
     lat                   = lat,
     prev_wet_doy          = prev_wet_doy,
     wet_window_eps        = wet_window_eps,
-    wet_window_drift_gate = wet_window_drift_gate,
     cross_min_duration    = cross_min_duration
   )
 

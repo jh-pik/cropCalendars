@@ -46,16 +46,12 @@
 #'
 #'   With \code{eps = 0} or \code{prev_doy = NA} the plain argmax is returned
 #'   (backward compatible).
-#' @param drift_gate Deprecated and ignored (kept for call-site compatibility). The
-#'   smooth distance weighting subsumes the old small-move pass-through: near-DOY
-#'   moves already carry weight ~1, so the chosen window tracks a drifting onset
-#'   without an explicit gate.
 #'
 #' @return Integer DOY (1–365) of the start of the 120-day wettest window.
 #' @export
 
 calcDoyWetMonth <- function(daily_prec, daily_pet,
-                            prev_doy = NA_integer_, eps = 0, drift_gate = 7L) {
+                            prev_doy = NA_integer_, eps = 0) {
   ws <- .circRollSum(daily_prec, 120) / pmax(.circRollSum(daily_pet, 120), 1e-6)
   if (eps <= 0 || is.na(prev_doy) || prev_doy < 1L || prev_doy > length(ws))
     return(as.integer(which.max(ws)))

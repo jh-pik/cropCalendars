@@ -4,13 +4,7 @@
 \alias{calcDoyWetMonth}
 \title{Calculate beginning of the rainy season}
 \usage{
-calcDoyWetMonth(
-  daily_prec,
-  daily_pet,
-  prev_doy = NA_integer_,
-  eps = 0,
-  drift_gate = 7L
-)
+calcDoyWetMonth(daily_prec, daily_pet, prev_doy = NA_integer_, eps = 0)
 }
 \arguments{
 \item{daily_prec}{Numeric vector of length 365. Climatological daily
@@ -49,11 +43,6 @@ only when \code{eps > 0} to apply temporal hysteresis (see \code{eps}).}
 
   With \code{eps = 0} or \code{prev_doy = NA} the plain argmax is returned
   (backward compatible).}
-
-\item{drift_gate}{Deprecated and ignored (kept for call-site compatibility). The
-smooth distance weighting subsumes the old small-move pass-through: near-DOY
-moves already carry weight ~1, so the chosen window tracks a drifting onset
-without an explicit gate.}
 }
 \value{
 Integer DOY (1–365) of the start of the 120-day wettest window.

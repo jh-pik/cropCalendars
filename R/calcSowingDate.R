@@ -21,9 +21,6 @@
 #' PREC/PRECTEMP sowing branch. Only used when \code{wet_window_eps > 0}.
 #' @param wet_window_eps Non-negative relative hysteresis band forwarded to
 #' \code{calcDoyWetMonth} (default 0 = off). See \code{?calcDoyWetMonth}.
-#' @param wet_window_drift_gate Integer day distance within which wettest-window
-#' moves are always followed (forwarded to \code{calcDoyWetMonth} as
-#' \code{drift_gate}; default 7). See \code{?calcDoyWetMonth}.
 #' @param cross_min_duration Integer minimum sustained-excursion length (days)
 #' forwarded to \code{calcDoyCrossThreshold} for the spring/fall temperature
 #' crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.
@@ -37,7 +34,6 @@ calcSowingDate <- function(croppar,
                            lat,
                            prev_wet_doy          = NA_integer_,
                            wet_window_eps        = 0,
-                           wet_window_drift_gate = 7L,
                            cross_min_duration    = 1L
                            ) {
 
@@ -126,8 +122,7 @@ calcSowingDate <- function(croppar,
     } else if (seasonality == "PREC" || seasonality == "PRECTEMP") {
 
       sowing_doy <- calcDoyWetMonth(daily_prec, daily_pet,
-                                    prev_doy = prev_wet_doy, eps = wet_window_eps,
-                                    drift_gate = wet_window_drift_gate)
+                                    prev_doy = prev_wet_doy, eps = wet_window_eps)
       sowing_month <- doy2month(sowing_doy)
       sowing_season <- "spring"
 
