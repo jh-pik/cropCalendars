@@ -18,12 +18,27 @@
 #'   warmest-month temperature uses the warmest 30-day window mean of this series
 #'   instead of \code{max(monthly_temp)} (continuous, no month-boundary
 #'   quantisation). \code{NULL} (default) uses the monthly maximum (backward compatible).
+#' @param prev_tclass Integer thermal class chosen last year (0 = t-low, 1 = t-mid,
+#'   2 = t-high), or \code{NA} (default). Used only when \code{harv_eps > 0} to apply
+#'   a deadband on the base/optimum temperature thresholds (see \code{harv_eps}).
+#' @param harv_eps Non-negative numeric (default 0 = off). Master switch for the
+#'   harvest-rule hysteresis: with a prior class, the \code{temp_base_rphase} /
+#'   \code{temp_opt_rphase} thresholds are relaxed toward keeping last year's thermal
+#'   class (thermostat deadband, absolute \code{harv_tmax_margin} deg C), so a
+#'   sub-degree \code{temp_max} wobble between sliding windows no longer flips the
+#'   harvest rule -- and hence the whole harvest formula. Mirrors \code{seas_eps}.
+#' @param harv_tmax_margin Absolute deadband (deg C) on the base/optimum temperature
+#'   thresholds when \code{harv_eps > 0} (default 1; a relative \code{harv_eps} is not
+#'   meaningful on thresholds that can be near 0).
 #' @export
 calcHarvestRule <- function(croppar,
                             monthly_temp,
                             monthly_ppet,
                             seasonality,
-                            daily_temp = NULL
+                            daily_temp       = NULL,
+                            prev_tclass      = NA_integer_,
+                            harv_eps         = 0,
+                            harv_tmax_margin = 1
                             ) {
 
   # extract individual parameter names and values
@@ -34,44 +49,28 @@ calcHarvestRule <- function(croppar,
   # calendar-month maximum.
   temp_max <- if (!is.null(daily_temp)) .warmestWindowMean(daily_temp) else max(monthly_temp)
 
-  if (seasonality == "NO_SEASONALITY") {
-    if (temp_max <= temp_base_rphase) {
-      harvest_rule <- 1
-      names(harvest_rule) <- "t-low_no-seas"
-    } else if (temp_max > temp_base_rphase & temp_max <= temp_opt_rphase) {
-      harvest_rule <- 4
-      names(harvest_rule) <- "t-mid_no-seas"
-    } else {
-      harvest_rule <- 7
-      names(harvest_rule) <- "t-high_no-seas"
-    }
+  # Thermal class (0 = t-low, 1 = t-mid, 2 = t-high) from temp_max vs the crop's base
+  # and optimum reproductive-phase temperatures. With harv_eps > 0 and a prior class,
+  # a thermostat deadband (absolute harv_tmax_margin) relaxes each threshold toward
+  # keeping last year's class, so temp_max must move decisively past base/opt to flip
+  # the class (and the whole harvest formula) -- the seas_eps pattern on the harvest
+  # rule's thermal split.
+  thr_base <- temp_base_rphase
+  thr_opt  <- temp_opt_rphase
+  if (harv_eps > 0 && !is.na(prev_tclass)) {
+    thr_base <- if (prev_tclass >= 1L) thr_base - harv_tmax_margin else thr_base + harv_tmax_margin
+    thr_opt  <- if (prev_tclass >= 2L) thr_opt  - harv_tmax_margin else thr_opt  + harv_tmax_margin
   }
+  tclass <- if (temp_max <= thr_base) 0L else if (temp_max <= thr_opt) 1L else 2L
 
-  else if (seasonality == "PREC") {
-    if (temp_max <= temp_base_rphase) {
-      harvest_rule <- 2
-      names(harvest_rule) <- "t-low_prec-seas"
-    } else if (temp_max > temp_base_rphase & temp_max <= temp_opt_rphase) {
-      harvest_rule <- 5
-      names(harvest_rule) <- "t-mid_prec-seas"
-    } else {
-      harvest_rule <- 8
-      names(harvest_rule) <- "t-high_prec-seas"
-    }
-  }
-
-  else {
-    if (temp_max <= temp_base_rphase) {
-      harvest_rule <- 3
-      names(harvest_rule) <- "t-low_mix-seas"
-    } else if (temp_max > temp_base_rphase & temp_max <= temp_opt_rphase) {
-      harvest_rule <- 6
-      names(harvest_rule) <- "t-mid_mix-seas"
-    } else {
-      harvest_rule <- 9
-      names(harvest_rule) <- "t-high_mix-seas"
-    }
-  }
-
+  grp <- switch(seasonality, "NO_SEASONALITY" = 1L, "PREC" = 2L, 3L)   # 1 no-seas, 2 prec, 3 mix
+  rule_tab <- matrix(c(1, 4, 7,  2, 5, 8,  3, 6, 9), nrow = 3, byrow = TRUE)
+  name_tab <- matrix(c("t-low_no-seas",  "t-mid_no-seas",  "t-high_no-seas",
+                       "t-low_prec-seas","t-mid_prec-seas","t-high_prec-seas",
+                       "t-low_mix-seas", "t-mid_mix-seas", "t-high_mix-seas"),
+                     nrow = 3, byrow = TRUE)
+  harvest_rule <- rule_tab[grp, tclass + 1L]
+  names(harvest_rule) <- name_tab[grp, tclass + 1L]
+  attr(harvest_rule, "tclass") <- tclass   # carried as prev_tclass hysteresis state
   return(harvest_rule)
 }

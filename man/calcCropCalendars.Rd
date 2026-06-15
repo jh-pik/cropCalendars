@@ -18,7 +18,10 @@ calcCropCalendars(
   cross_smooth_window = 0L,
   prev_seas = NA_character_,
   seas_eps = 0,
-  seas_mtemp_margin = 1
+  seas_mtemp_margin = 1,
+  prev_harv = NA_integer_,
+  harv_eps = 0,
+  harv_tmax_margin = 1
 )
 }
 \arguments{
@@ -77,6 +80,21 @@ crop-independent, so this is per-cell state; the resolved class is returned as
 \item{seas_mtemp_margin}{Absolute min-temperature deadband (deg C) forwarded to
 \code{calcSeasonality} as \code{mtemp_margin} (default 1; only used when
 \code{seas_eps > 0}).}
+
+\item{prev_harv}{Integer packed harvest-rule hysteresis state from last year (or
+\code{NA}), encoding the thermal class, wet-season-end-found and always-wet flags
+(\code{tclass + 3*wet_found + 6*always_wet}). Unlike the seasonality/wet-window
+state this is crop-DEPENDENT, so the caller carries it per cell AND per crop. The
+resolved value is returned as \code{attr(., "harv_state")}. Only used when
+\code{harv_eps > 0}.}
+
+\item{harv_eps}{Non-negative harvest-rule deadband (default 0 = off), forwarded to
+\code{calcHarvestRule} (thermal class) and \code{calcHarvestDateVector} (wet-branch).
+Suppresses the year-to-year harvest-formula flips from \code{temp_max} / P/PET
+grazing the rule thresholds. Mirrors \code{seas_eps}.}
+
+\item{harv_tmax_margin}{Absolute deadband (deg C) on the \code{temp_max} vs
+base/optimum thresholds when \code{harv_eps > 0} (default 1).}
 }
 \description{
 Wrapper function calling sub-functions to

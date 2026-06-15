@@ -44,6 +44,16 @@
 #' inputs only -- the hot-day \code{daily_temp} crossing, and \code{daily_prec} /
 #' \code{daily_pet} before the wet-season-end P/PET ratio. Default \code{0} = off.
 #' The reductions (\code{warmest_day}, driest-month P/PET) use the raw series.
+#' @param prev_wet_found,prev_always_wet Logical hysteresis state from last year (or
+#' \code{NA}): did a wet-season-end crossing exist, and was the cell always-wet
+#' (\code{min_ppet >= ppet_min})? Used only when \code{harv_eps > 0}. The resolved
+#' values are returned as \code{attr(., "wet_found")} / \code{attr(., "always_wet")}.
+#' @param harv_eps Non-negative numeric (default 0 = off). Relative deadband for the
+#' wet-branch thresholds: it relaxes \code{ppet_ratio} (wet-season-end crossing
+#' existence) toward keeping \code{prev_wet_found}, and \code{ppet_min} (always-wet
+#' test) toward keeping \code{prev_always_wet}, so a grazing P/PET wobble no longer
+#' snaps \code{hd_wetseas} between a crossing date and the hd_last/hd_first fallback.
+#' Mirrors \code{seas_eps}.
 #'
 #' @seealso getCropParam, calcClimatology, calcSowingDate, calcCropCalendars
 #' @export
@@ -57,7 +67,10 @@ calcHarvestDateVector <- function(croppar,
                                   daily_prec = NULL,
                                   daily_pet  = NULL,
                                   cross_min_duration = 1L,
-                                  cross_smooth_window = 0L
+                                  cross_smooth_window = 0L,
+                                  prev_wet_found = NA,
+                                  prev_always_wet = NA,
+                                  harv_eps = 0
                                   ) {
 
   # Extract individual parameter names and values
@@ -95,6 +108,17 @@ calcHarvestDateVector <- function(croppar,
     daily_ppet_diff <- .monthlyToDoy365(monthly_ppet_diff)
   }
 
+  # Wet-season-end crossing hysteresis (harv_eps > 0). Whether the daily P/PET cycle
+  # crosses ppet_ratio downward at all -- i.e. whether a wet-season-end DATE exists --
+  # flips year to year when the cycle grazes ppet_ratio, snapping hd_wetseas between a
+  # crossing date and the always-wet/always-dry fallback (a large jump). The deadband
+  # nudges the threshold toward keeping last year's found/not-found status: when the
+  # crossing was found, raise ppet_ratio so the cycle still dips below it (the common
+  # marginal-wet drift); when it was not, lower it. Mirrors the seas_eps thermostat.
+  ppet_ratio_eff <- ppet_ratio
+  if (harv_eps > 0 && !is.na(prev_wet_found))
+    ppet_ratio_eff <- ppet_ratio * (if (prev_wet_found) 1 + harv_eps else 1 - harv_eps)
+
   # Shortest cycle: crop lower biological limit
   hd_first <- sowing_date + min_growingseason
   # Medium cycle: best trade-off vegetative and reproductive growth
@@ -107,7 +131,7 @@ calcHarvestDateVector <- function(croppar,
   # End of wet season ----
   doy_wet1 <- calcDoyCrossThreshold(
     daily_ppet,
-    ppet_ratio,
+    ppet_ratio_eff,
     min_duration = cross_min_duration
     )[["doy_cross_down"]]
   doy_wet2 <- calcDoyCrossThreshold(
@@ -131,8 +155,16 @@ calcHarvestDateVector <- function(croppar,
   # (continuous; no month quantisation), else the calendar-month minimum.
   min_ppet <- if (!is.null(daily_prec) && !is.null(daily_pet))
     .driestWindowPpet(daily_prec, daily_pet) else min(monthly_ppet)
+  # Always-wet test hysteresis (harv_eps > 0): the min_ppet >= ppet_min test decides
+  # hd_last vs hd_first when no wet-season-end crossing exists, and flips (a big jump)
+  # when min_ppet grazes ppet_min. Relax ppet_min toward keeping last year's verdict
+  # (thermostat, relative harv_eps).
+  ppet_min_eff <- ppet_min
+  if (harv_eps > 0 && !is.na(prev_always_wet))
+    ppet_min_eff <- ppet_min * (if (prev_always_wet) 1 - harv_eps else 1 + harv_eps)
+  always_wet <- min_ppet >= ppet_min_eff
   if (doy_wet1 == -9999) {
-    if (min_ppet >= ppet_min) {
+    if (always_wet) {
       hd_wetseas <- hd_last
     } else {
       hd_wetseas <- hd_first
@@ -202,6 +234,10 @@ calcHarvestDateVector <- function(croppar,
   names(hd_vector) <- c("hd_first", "hd_maxrp", "hd_last",
                         "hd_wetseas", "hd_temp_base", "hd_temp_opt")
 
+  # Wet-branch hysteresis state, carried forward by calcCropCalendars: did a
+  # wet-season-end crossing exist this year, and was the cell always-wet?
+  attr(hd_vector, "wet_found")  <- (doy_wet1 != -9999)
+  attr(hd_vector, "always_wet") <- always_wet
   return(hd_vector)
 }
 

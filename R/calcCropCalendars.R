@@ -44,6 +44,18 @@
 #' @param seas_mtemp_margin Absolute min-temperature deadband (deg C) forwarded to
 #' \code{calcSeasonality} as \code{mtemp_margin} (default 1; only used when
 #' \code{seas_eps > 0}).
+#' @param prev_harv Integer packed harvest-rule hysteresis state from last year (or
+#' \code{NA}), encoding the thermal class, wet-season-end-found and always-wet flags
+#' (\code{tclass + 3*wet_found + 6*always_wet}). Unlike the seasonality/wet-window
+#' state this is crop-DEPENDENT, so the caller carries it per cell AND per crop. The
+#' resolved value is returned as \code{attr(., "harv_state")}. Only used when
+#' \code{harv_eps > 0}.
+#' @param harv_eps Non-negative harvest-rule deadband (default 0 = off), forwarded to
+#' \code{calcHarvestRule} (thermal class) and \code{calcHarvestDateVector} (wet-branch).
+#' Suppresses the year-to-year harvest-formula flips from \code{temp_max} / P/PET
+#' grazing the rule thresholds. Mirrors \code{seas_eps}.
+#' @param harv_tmax_margin Absolute deadband (deg C) on the \code{temp_max} vs
+#' base/optimum thresholds when \code{harv_eps > 0} (default 1).
 #' @seealso calcClimatology
 #' @export
 
@@ -60,7 +72,10 @@ calcCropCalendars <- function(lon                   = NULL,
                               cross_smooth_window   = 0L,
                               prev_seas             = NA_character_,
                               seas_eps              = 0,
-                              seas_mtemp_margin     = 1
+                              seas_mtemp_margin     = 1,
+                              prev_harv             = NA_integer_,
+                              harv_eps              = 0,
+                              harv_tmax_margin      = 1
                               ) {
 
   # Import crop parameters (unless already supplied by the caller).
@@ -137,12 +152,21 @@ calcCropCalendars <- function(lon                   = NULL,
   sowing_season <- sowing[["sowing_season"]]
 
   # Harvest date
+  # Harvest-rule hysteresis state carried from last year, packed into one integer
+  # (tclass 0-2 + 3*wet_found + 6*always_wet); NA on the first year / when off.
+  prev_tclass     <- if (is.na(prev_harv)) NA_integer_ else prev_harv %% 3L
+  prev_wet_found  <- if (is.na(prev_harv)) NA else as.logical((prev_harv %/% 3L) %% 2L)
+  prev_always_wet <- if (is.na(prev_harv)) NA else as.logical(prev_harv %/% 6L)
+
   harvest_rule  <- calcHarvestRule(
     croppar      = crop_parameters,
     monthly_temp = mtemp,
     monthly_ppet = mppet,
     seasonality  = seasonality,
-    daily_temp   = dtemp
+    daily_temp   = dtemp,
+    prev_tclass      = prev_tclass,
+    harv_eps         = harv_eps,
+    harv_tmax_margin = harv_tmax_margin
   )
 
   harvest_vector <- calcHarvestDateVector(
@@ -156,7 +180,10 @@ calcCropCalendars <- function(lon                   = NULL,
     daily_prec        = dprec,
     daily_pet         = dpet,
     cross_min_duration = cross_min_duration,
-    cross_smooth_window = cross_smooth_window
+    cross_smooth_window = cross_smooth_window,
+    prev_wet_found    = prev_wet_found,
+    prev_always_wet   = prev_always_wet,
+    harv_eps          = harv_eps
   )
 
   harvest <- calcHarvestDate(
@@ -196,8 +223,16 @@ calcCropCalendars <- function(lon                   = NULL,
     "growing_period"   = c(growpriod_rf, growpriod_ir)
   )
 
-  attr(pixel_df, "wet_doy")   <- wet_doy
-  attr(pixel_df, "seas_type") <- seasonality   # crop-independent; carried as prev_seas state
+  # Resolved harvest-rule hysteresis state, re-packed for the caller to carry forward.
+  # Unlike seas_type/wet_doy this is crop-DEPENDENT (thresholds are crop parameters),
+  # so the driver keeps it per cell AND per crop.
+  harv_state <- as.integer(attr(harvest_rule, "tclass") +
+                           3L * as.integer(attr(harvest_vector, "wet_found")) +
+                           6L * as.integer(attr(harvest_vector, "always_wet")))
+
+  attr(pixel_df, "wet_doy")    <- wet_doy
+  attr(pixel_df, "seas_type")  <- seasonality   # crop-independent; carried as prev_seas state
+  attr(pixel_df, "harv_state") <- harv_state    # crop-dependent; carried as prev_harv state
   return(pixel_df)
 
 }
