@@ -86,10 +86,12 @@ calcSowingDate <- function(croppar,
   if (!is.null(daily_temp)) {
     coldest_t   <- .coldestWindowMean(daily_temp)
     coldest_doy <- .doyColdestWindow(daily_temp)
+    warmest_doy <- .doyWarmestWindow(daily_temp)
   } else {
     midday      <- c(15, 43, 74, 104, 135, 165, 196, 227, 257, 288, 318, 349)
     coldest_t   <- min(monthly_temp)
     coldest_doy <- midday[which.min(monthly_temp)]
+    warmest_doy <- midday[which.max(monthly_temp)]
     daily_temp  <- .monthlyToDoy365(monthly_temp)
   }
 
@@ -119,9 +121,15 @@ calcSowingDate <- function(croppar,
     firstwinterdoy <- -9999
 
   } else {
-    # "Mild winter" (allowing vernalizing crops)
+    # "Mild winter" (allowing vernalizing crops). Anchor the autumn down-crossing scan
+    # at the warmest day -- the mirror of the coldest-day anchor on the spring
+    # up-crossing below. Scanning forward from the summer peak catches the genuine
+    # autumn cooling and skips a non-monotonic spring ascent grazing temp_fall, which
+    # from DOY 1 would register a spurious autumn-cooling date ~half a year early
+    # (the same failure the spring fix removed, mirrored).
     firstwinterdoy <- calcDoyCrossThreshold(
-      daily_temp_x, temp_fall, min_duration = cross_min_duration)[["doy_cross_down"]]
+      daily_temp_x, temp_fall, min_duration = cross_min_duration,
+      from = warmest_doy)[["doy_cross_down"]]
 
   }
 
