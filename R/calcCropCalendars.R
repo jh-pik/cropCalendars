@@ -29,6 +29,11 @@
 #' forwarded to \code{calcSowingDate}/\code{calcHarvestDateVector} ->
 #' \code{calcDoyCrossThreshold} (default 1 = off). See
 #' \code{?calcDoyCrossThreshold}.
+#' @param cross_smooth_window Integer odd day-window for smoothing the
+#' threshold-crossing inputs only (spring/fall temperature, hot-day, wet-season-end),
+#' forwarded to \code{calcSowingDate}/\code{calcHarvestDateVector} (default 0 = off).
+#' The daily climatology (\code{mclimate}) is used raw; smoothing is applied per
+#' crossing detector, so the reductions and the 120-day wettest window are unaffected.
 #' @param prev_seas Character seasonality class from last year (or \code{NA}),
 #' forwarded to \code{calcSeasonality} for class hysteresis. The class is
 #' crop-independent, so this is per-cell state; the resolved class is returned as
@@ -52,6 +57,7 @@ calcCropCalendars <- function(lon                   = NULL,
                               wet_window_eps        = 0,
                               wet_window_decay      = 0.3,
                               cross_min_duration    = 1L,
+                              cross_smooth_window   = 0L,
                               prev_seas             = NA_character_,
                               seas_eps              = 0,
                               seas_mtemp_margin     = 1
@@ -117,6 +123,7 @@ calcCropCalendars <- function(lon                   = NULL,
     wet_window_eps        = wet_window_eps,
     wet_window_decay      = wet_window_decay,
     cross_min_duration    = cross_min_duration,
+    cross_smooth_window   = cross_smooth_window,
     wet_doy               = wet_doy
   )
 
@@ -143,7 +150,8 @@ calcCropCalendars <- function(lon                   = NULL,
     daily_temp        = dtemp,
     daily_prec        = dprec,
     daily_pet         = dpet,
-    cross_min_duration = cross_min_duration
+    cross_min_duration = cross_min_duration,
+    cross_smooth_window = cross_smooth_window
   )
 
   harvest <- calcHarvestDate(

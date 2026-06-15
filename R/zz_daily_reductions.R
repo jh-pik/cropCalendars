@@ -13,6 +13,24 @@
 # the strict analogue of the monthly reduction it supersedes. They reuse the
 # package-internal .circRollSum (O(n) circular window sum) and .doyWarmestWindow.
 
+# Fast centred circular running mean of a single DOY-indexed daily cycle, via a
+# C-level cumsum (no R-level per-DOY loop -- unlike .circSmooth, which is written to
+# vectorise over the cell dimension of a [cells x ndays] matrix and is too slow to
+# call once per cell). The window is forced odd. This is the rule-time smoothing
+# applied to the threshold-CROSSING inputs only (see cross_smooth_window): the daily
+# climatology is kept raw, and each crossing detector smooths its own input here, so
+# the smoothing no longer leaks into the reductions / 120-day wet window (which are
+# ~invariant to it). w <= 1 returns the series unchanged (smoothing off).
+.smoothCycle <- function(x, w) {
+  w <- as.integer(w)
+  if (is.na(w) || w <= 1L) return(x)
+  n <- length(x); h <- (w - 1L) %/% 2L; w <- 2L * h + 1L      # force odd
+  if (h < 1L || n <= w) return(x)
+  ext <- c(x[(n - h + 1L):n], x, x[1:h])                      # circular pad both ends
+  cs  <- cumsum(c(0, ext))
+  (cs[(1:n) + w] - cs[1:n]) / w                               # centred window mean
+}
+
 # Mean of the warmest `width`-day window (daily analogue of max(monthly_temp)).
 .warmestWindowMean <- function(daily_temp, width = 30L) {
   max(.circRollSum(daily_temp, width)) / width

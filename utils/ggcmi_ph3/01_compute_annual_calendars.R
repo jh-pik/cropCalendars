@@ -147,6 +147,7 @@ computeYear <- function(clim, prev_wet, prev_seas) {
                              prev_wet_doy = prev_wet[j], wet_window_eps = wet_window_eps,
                              wet_window_decay = wet_window_decay,
                              cross_min_duration = cross_min_duration,
+                             cross_smooth_window = cross_smooth_window,
                              prev_seas = prev_seas[j], seas_eps = seas_eps,
                              seas_mtemp_margin = seas_mtemp_margin)
       if (ci == 1L) { wd <- attr(r, "wet_doy"); st <- attr(r, "seas_type") }   # crop-independent
@@ -229,7 +230,7 @@ prev_seas <- rep(NA_character_, NCELLS)   # per-cell seasonality-class hysteresi
 # or just Y0 otherwise) share one climatology — compute once and replicate.
 blk <- which(emit_years >= Y0 & emit_years <= serve_hi)
 if (length(blk) > 0) { t0 <- Sys.time()
-  cy <- computeYear(ringClimatology(ring, cross_smooth_window), prev_wet, prev_seas)
+  cy <- computeYear(ringClimatology(ring), prev_wet, prev_seas)
   arr0 <- cy$arr; prev_wet <- cy$wet; prev_seas <- cy$seas
   for (e in blk) store(e, arr0)
   cat(sprintf("  block %d-%d (1 climatology): %.1fs\n", min(emit_years[blk]), max(emit_years[blk]),
@@ -241,7 +242,7 @@ if (last_emit - 1L >= serve_hi) for (P in serve_hi:(last_emit - 1L)) {
   ring <- read_push(ring, P)
   Tn <- P + 1L; e <- match(Tn, emit_years)
   if (!is.na(e)) { t0 <- Sys.time()
-    cy <- computeYear(ringClimatology(ring, cross_smooth_window), prev_wet, prev_seas)
+    cy <- computeYear(ringClimatology(ring), prev_wet, prev_seas)
     prev_wet <- cy$wet; prev_seas <- cy$seas
     store(e, cy$arr)
     cat(sprintf("  year %d: %.1fs  (rss %.1f GB)\n", Tn, as.numeric(Sys.time() - t0, units = "secs"),

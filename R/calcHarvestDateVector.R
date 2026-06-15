@@ -40,6 +40,10 @@
 #' @param cross_min_duration integer minimum sustained-excursion length (days)
 #' forwarded to \code{calcDoyCrossThreshold} for the wet-season-end and
 #' hot-day crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.
+#' @param cross_smooth_window Integer odd day-window for smoothing the crossing
+#' inputs only -- the hot-day \code{daily_temp} crossing, and \code{daily_prec} /
+#' \code{daily_pet} before the wet-season-end P/PET ratio. Default \code{0} = off.
+#' The reductions (\code{warmest_day}, driest-month P/PET) use the raw series.
 #'
 #' @seealso getCropParam, calcMonthlyClimate, calcSowingDate, calcCropCalendars
 #' @export
@@ -52,7 +56,8 @@ calcHarvestDateVector <- function(croppar,
                                   daily_temp = NULL,
                                   daily_prec = NULL,
                                   daily_pet  = NULL,
-                                  cross_min_duration = 1L
+                                  cross_min_duration = 1L,
+                                  cross_smooth_window = 0L
                                   ) {
 
   # Extract individual parameter names and values
@@ -68,10 +73,13 @@ calcHarvestDateVector <- function(croppar,
   if (!have_dtemp) daily_temp <- .monthlyToDoy365(monthly_temp)
   # Spike-free daily P/PET for the wet-season-end crossing: the ratio of the
   # per-DOY mean P and mean PET (never blows up — mean PET on a DOY is never ~0),
-  # unlike the mean of daily P/PET ratios. Fall back to the interpolated monthly
-  # ratio if the daily P and PET are not supplied.
+  # unlike the mean of daily P/PET ratios. This feeds a threshold CROSSING, so P and
+  # PET are smoothed (cross_smooth_window) BEFORE the ratio is formed -- the daily
+  # climatology itself is kept raw, and only the crossing input is conditioned here
+  # (0 = no-op). Fall back to the interpolated monthly ratio if daily P/PET absent.
   if (!is.null(daily_prec) && !is.null(daily_pet)) {
-    daily_ppet <- daily_prec / pmax(daily_pet, 1e-6)
+    daily_ppet <- .smoothCycle(daily_prec, cross_smooth_window) /
+                  pmax(.smoothCycle(daily_pet, cross_smooth_window), 1e-6)
   } else {
     daily_ppet <- .monthlyToDoy365(monthly_ppet)
   }
@@ -143,9 +151,13 @@ calcHarvestDateVector <- function(croppar,
     sowing_season == "winter", warmest_day, warmest_day + rphase_duration
     )
 
+  # Smoothed daily temperature for the hot-day threshold crossings ONLY (warmest_day
+  # above uses the raw daily climatology). cross_smooth_window = 0 -> no-op.
+  daily_temp_x <- .smoothCycle(daily_temp, cross_smooth_window)
+
   # First hot day ----
   doy_exceed_opt_rp <- calcDoyCrossThreshold(
-    daily_temp, temp_opt_rphase, min_duration = cross_min_duration
+    daily_temp_x, temp_opt_rphase, min_duration = cross_min_duration
     )[["doy_cross_up"]]
   idx <- which(doy_exceed_opt_rp < sowing_date & doy_exceed_opt_rp != -9999)
   doy_exceed_opt_rp[idx] <- doy_exceed_opt_rp[idx] + ndays_year
@@ -153,7 +165,7 @@ calcHarvestDateVector <- function(croppar,
 
   # Last hot day ----
   doy_below_opt_rp <- calcDoyCrossThreshold(
-    daily_temp,
+    daily_temp_x,
     temp_opt_rphase,
     min_duration = cross_min_duration
     )[["doy_cross_down"]]

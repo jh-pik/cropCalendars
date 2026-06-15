@@ -14,7 +14,8 @@ calcHarvestDateVector(
   daily_temp = NULL,
   daily_prec = NULL,
   daily_pet = NULL,
-  cross_min_duration = 1L
+  cross_min_duration = 1L,
+  cross_smooth_window = 0L
 )
 }
 \arguments{
@@ -51,6 +52,11 @@ per DOY (the \code{dpet} element from \code{calcMonthlyClimate}).}
 \item{cross_min_duration}{integer minimum sustained-excursion length (days)
 forwarded to \code{calcDoyCrossThreshold} for the wet-season-end and
 hot-day crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.}
+
+\item{cross_smooth_window}{Integer odd day-window for smoothing the crossing
+inputs only -- the hot-day \code{daily_temp} crossing, and \code{daily_prec} /
+\code{daily_pet} before the wet-season-end P/PET ratio. Default \code{0} = off.
+The reductions (\code{warmest_day}, driest-month P/PET) use the raw series.}
 }
 \description{
 Harvest reasons are the events that can trigger the harvest

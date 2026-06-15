@@ -35,6 +35,11 @@
 #' @param cross_min_duration Integer minimum sustained-excursion length (days)
 #' forwarded to \code{calcDoyCrossThreshold} for the spring/fall temperature
 #' crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.
+#' @param cross_smooth_window Integer odd day-window for smoothing \code{daily_temp}
+#' before the spring/fall threshold crossings only (the coldest-month reductions use
+#' the raw series). Default \code{0} = off. The daily climatology is kept raw and the
+#' crossing input is conditioned here, so the smoothing does not affect the
+#' reductions or the 120-day wettest window.
 #' @param monthly_prec,monthly_pet Optional numeric vectors of length 12, the
 #' monthly precipitation and PET TOTALS (the \code{mprec} / \code{mpet} elements
 #' from \code{calcMonthlyClimate}). Used only as the bug-free monthly fallback for
@@ -61,7 +66,8 @@ calcSowingDate <- function(croppar,
                            cross_min_duration    = 1L,
                            wet_doy               = NULL,
                            monthly_prec          = NULL,
-                           monthly_pet           = NULL
+                           monthly_pet           = NULL,
+                           cross_smooth_window   = 0L
                            ) {
 
   # extract individual parameter names and values
@@ -87,6 +93,11 @@ calcSowingDate <- function(croppar,
     daily_temp  <- .monthlyToDoy365(monthly_temp)
   }
 
+  # Smoothed daily temperature for the threshold crossings ONLY (the coldest-month
+  # reductions above use the raw daily_temp). The daily climatology is kept raw; this
+  # is where cross_smooth_window conditions the crossing input (0 = no-op).
+  daily_temp_x <- .smoothCycle(daily_temp, cross_smooth_window)
+
   # Constrain first possible date for winter crop sowing
   earliest_sdate  <- ifelse(lat >= 0, initdate.sdatenh, initdate.sdatesh)
   earliest_smonth <- doy2month(earliest_sdate)
@@ -110,7 +121,7 @@ calcSowingDate <- function(croppar,
   } else {
     # "Mild winter" (allowing vernalizing crops)
     firstwinterdoy <- calcDoyCrossThreshold(
-      daily_temp, temp_fall, min_duration = cross_min_duration)[["doy_cross_down"]]
+      daily_temp_x, temp_fall, min_duration = cross_min_duration)[["doy_cross_down"]]
 
   }
 
@@ -129,7 +140,7 @@ calcSowingDate <- function(croppar,
   # (e.g. Uruguay / S. Brazil), without adding any temporal lag. coldest_doy is the
   # centre of the coldest 30-day window of the daily climatology (computed above).
   firstspringdoy   <- calcDoyCrossThreshold(
-    daily_temp, temp_spring, min_duration = cross_min_duration,
+    daily_temp_x, temp_spring, min_duration = cross_min_duration,
     from = coldest_doy)[["doy_cross_up"]]
   firstspringmonth <- ifelse(
     firstspringdoy == -9999, DEFAULT_MONTH, doy2month(firstspringdoy)

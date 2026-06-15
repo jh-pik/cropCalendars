@@ -15,6 +15,7 @@ calcCropCalendars(
   wet_window_eps = 0,
   wet_window_decay = 0.3,
   cross_min_duration = 1L,
+  cross_smooth_window = 0L,
   prev_seas = NA_character_,
   seas_eps = 0,
   seas_mtemp_margin = 1
@@ -57,6 +58,12 @@ this state is per-cell. The resolved DOY is also returned as
 forwarded to \code{calcSowingDate}/\code{calcHarvestDateVector} ->
 \code{calcDoyCrossThreshold} (default 1 = off). See
 \code{?calcDoyCrossThreshold}.}
+
+\item{cross_smooth_window}{Integer odd day-window for smoothing the
+threshold-crossing inputs only (spring/fall temperature, hot-day, wet-season-end),
+forwarded to \code{calcSowingDate}/\code{calcHarvestDateVector} (default 0 = off).
+The daily climatology (\code{mclimate}) is used raw; smoothing is applied per
+crossing detector, so the reductions and the 120-day wettest window are unaffected.}
 
 \item{prev_seas}{Character seasonality class from last year (or \code{NA}),
 forwarded to \code{calcSeasonality} for class hysteresis. The class is

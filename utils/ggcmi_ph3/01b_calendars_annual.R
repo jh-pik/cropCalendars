@@ -35,6 +35,7 @@ ncores <- if (length(args) >= 3) as.integer(args[3]) else
 if (!exists("wet_window_eps"))        wet_window_eps        <- 0
 if (!exists("wet_window_decay"))      wet_window_decay      <- 0.3
 if (!exists("cross_min_duration"))    cross_min_duration    <- 1L
+if (!exists("cross_smooth_window"))   cross_smooth_window   <- 0L
 if (!exists("seas_eps"))              seas_eps              <- 0
 if (!exists("seas_mtemp_margin"))     seas_mtemp_margin     <- 1
 
@@ -60,8 +61,8 @@ if (!is.null(years_env)) { keep <- cyears %in% years_env; cfiles <- cfiles[keep]
 if (length(cyears) == 0) stop("No climatology files match (run 01a; check YEARS).")
 emit_years <- cyears
 nE <- length(emit_years)
-cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d seas_eps=%g\n",
-            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, seas_eps))
+cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d cross_smooth=%d seas_eps=%g\n",
+            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, cross_smooth_window, seas_eps))
 
 # Crops + pre-extracted parameters. CROPS env (rb_cal names, comma-separated, e.g.
 # "Maize") restricts the crop set for fast dev/validation runs (default: all).
@@ -96,6 +97,7 @@ computeYear <- function(clim, prev_wet, prev_seas) {
                              prev_wet_doy = prev_wet[j], wet_window_eps = wet_window_eps,
                              wet_window_decay = wet_window_decay,
                              cross_min_duration = cross_min_duration,
+                             cross_smooth_window = cross_smooth_window,
                              prev_seas = prev_seas[j], seas_eps = seas_eps,
                              seas_mtemp_margin = seas_mtemp_margin)
       if (ci == 1L) { wd <- attr(r, "wet_doy"); st <- attr(r, "seas_type") }
