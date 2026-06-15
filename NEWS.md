@@ -2,6 +2,50 @@
 
 ## 0.2.0 — annual sliding-window pipeline
 
+### Daily-climatology rule port + ring slimming
+- **All extremum reductions moved from the 12 calendar months to daily 30-day windows.**
+  The coldest/warmest-month temperature (`calcSeasonality` min-temp, `calcSowingDate`
+  winter-type tests, `calcHarvestRule`/`calcHarvestDate` warmest-month guards), the
+  warmest-month mid-day, the coldest-day sowing anchor, the driest-month P/PET
+  (`hd_wetseas` fallback) and the P/PET month-over-month difference (`doy_wet2`) now use
+  30-day windows / centres of the daily climatology (`R/zz_daily_reductions.R`). A daily
+  mean is already a per-DOY 30-year mean, so the 30-day window reproduces the
+  calendar-month value continuously, removing the ~30-day flips when the warmest/coldest
+  (or wettest/driest) month alternated between adjacent windows. The warm-winter sowing
+  date and the spring up-crossing are now anchored at the **coldest day** (centre of the
+  coldest 30-day window). The seasonality **CV classifier stays on 12 monthly bins**
+  (now reconstructed from the daily cycle) — the calibrated 0.4/0.010 thresholds are
+  hard cutoffs, so a daily/overlapping CV would reclassify grazing cells.
+- **Crossing-detector smoothing relocated out of the climatology** and renamed
+  `clm_smooth_window` → `cross_smooth_window`. The smoothing (centred running mean,
+  reject 1-day jitter) is now applied to **each crossing detector's own input**
+  (`.smoothCycle`, threaded through `calcSowingDate`/`calcHarvestDateVector`), not to the
+  stored climatology — which stays raw, so the extremum reductions and the 120-day
+  wettest window are unaffected. Numerically equivalent (the two smoothers are
+  floating-point identical; crossings unchanged). In the split pipeline this makes
+  `cross_smooth_window` tunable in `01b` without recomputing the `01a` cache.
+- **Bug-free monthly fallbacks.** With no daily series a direct caller now falls back to
+  the exact legacy monthly rule (`min/max(monthly_*)`, coldest/warmest-month mid-day),
+  and the wettest-window uses a 4-month `Σ₄P/Σ₄PET` ratio-of-sums on the monthly totals
+  (`.wetDoyMonthly`) — summing P and PET **separately**, never the monthly P/PET *ratio*
+  (the legacy `Σ`-of-ratios form let one near-zero-PET month explode and dominate the
+  window — the bug that motivated the daily redesign). Threshold crossings interpolate
+  monthly→daily in fallback (no pure-monthly crossing exists), matching the reference.
+- **Sliding ring carries only daily data.** The streaming engine gained a `daily_only`
+  mode: the ring allocates/accumulates/serves only `dtemp`/`dprec`/`dpet` (no monthly
+  sums, no `dppet`), trimming the per-slot footprint (~4% smaller ring → less fork
+  pressure). `calcCropCalendars` reconstructs the 12 monthly temp/precip values for the
+  seasonality CVs via `.monthlyFromDaily` (mean / sum over each month's DOYs — exact
+  except a sub-percent February residual from the Feb-29→DOY-59 fold). `01a` now caches
+  only the daily climatology. Verified bit-identical on the daily fields; 42/42 cell×crop
+  cases identical in seasonality, sowing and maturity. (An existing `01a` cache must be
+  regenerated for the new `01b`.)
+- **Climate engine renamed** to drop the now-misleading "Monthly":
+  `initMonthlyClimate`→`initClimateAccum`, `addYearMonthlyClimate`→`addYearClimate`,
+  `finalizeMonthlyClimate`→`finalizeClimate`, `calcMonthlyClimate`→`calcClimatology`
+  (files/man/tests to match). After the daily port these primarily build the *daily*
+  climatology. Pure rename, no behaviour change.
+
 ### Wet-window hysteresis — anchor fix + Gaussian distance kernel
 - **Fixed the wettest-window hysteresis anchor bug.** The per-cell state carried between
   years (`prev_wet`) was taken from crop #1's *sowing day* (`calcCropCalendars` set
@@ -35,7 +79,7 @@
   Future scenarios seed the ring from historical climate; opt-in seed cache (`SAVE_SEED`).
 - **Stage 01 split into 01a (climatology) + 01b (calendars)** for RAM safety and fast
   rule iteration (`utils/ggcmi_ph3/01a_climatology_annual.R`, `01b_calendars_annual.R`).
-  `01a` streams the raw climate through the ring and writes the per-year smoothed
+  `01a` streams the raw climate through the ring and writes the per-year raw daily
   climatology to disk (fork-free; bounded ~25 GB). `01b` loads one year's climatology at
   a time and runs `calcCropCalendars` via `mclapply` — so the heavy ring buffer is NOT
   live in the parent during the 64-worker fork, which removes the copy-on-write OOM
@@ -84,10 +128,10 @@
   latch onto single-day blips. A 1-day dip-and-recover through `temp_spring` in the autumn
   descent produces a spurious "first" up-crossing ~130 days before the real spring
   crossing, and sub-1 °C differences between 30-yr windows flip which side wins (verified
-  on GFDL-ESM4 cell 136.25/−33.25, S. Australia). Two fixes: (a)
-  `finalizeClimate(smooth_window=)` applies a centred **circular running mean** to
-  the daily climatologies (config `clm_smooth_window`, default 15 d; threaded via
-  `ringClimatology`); (b) `calcDoyCrossThreshold(min_duration=)` accepts a crossing only if
+  on GFDL-ESM4 cell 136.25/−33.25, S. Australia). Two fixes: (a) a centred **circular
+  running mean** applied to each crossing detector's input (config
+  `cross_smooth_window`, default 15 d, `.smoothCycle`; see the rule-port entry above for
+  the later relocation off the stored climatology); (b) `calcDoyCrossThreshold(min_duration=)` accepts a crossing only if
   the excursion **persists** that many days (config `cross_min_duration`, default 5;
   threaded through `calcSowingDate`/`calcHarvestDateVector`/`calcCropCalendars`). Smoothing
   is the decisive lever (collapses the bistable flip to the genuine spring crossing); the

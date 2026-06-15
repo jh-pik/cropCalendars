@@ -28,7 +28,7 @@ See examples in `./utils`
 library(cropCalendars)
 
 # Main functions
-climate <- calcMonthlyClimate()
+climate <- calcClimatology()
 crop_calendars <- calcCropCalendars()
 phenological_heat_units <- calcPHU()
 ```
@@ -38,7 +38,7 @@ phenological_heat_units <- calcPHU()
 This repository has **two layers**:
 
 1. **The R package (`R/`, portable).** The core algorithm functions
-   (`calcMonthlyClimate`, `calcCropCalendars`, `calcSowingDate`, `calcHarvestDate`,
+   (`calcClimatology`, `calcCropCalendars`, `calcSowingDate`, `calcHarvestDate`,
    `calcPHU`, `calcPET` / `calcPET_FAO56`, …) are plain R that operate on in-memory
    vectors / data frames. Default crop parameters ship inside the package
    (`inst/extdata/crop_parameters.csv`, read via `system.file`). The only hard
@@ -59,12 +59,12 @@ library(cropCalendars)
 # Per-pixel daily/monthly climate -> crop calendar -> phenological heat units.
 # Feed your own climate series (tas, pr, and for FAO-56 PET also rsds, rlds,
 # huss, sfcwind, ps) as plain R objects; no files or paths are required.
-clim <- calcMonthlyClimate(lat = lat, mtemp = tas, mprec = pr, ...)
+clim <- calcClimatology(lat = lat, temp = tas, prec = pr, syear = y0, eyear = y1, ...)
 ccal <- calcCropCalendars(lon = lon, lat = lat, ...)
 phu  <- calcPHU(sdate = ccal$sdate, hdate = ccal$hdate, ...)
 ```
 
-`?calcCropCalendars`, `?calcMonthlyClimate`, `?calcPHU` document the expected inputs.
+`?calcCropCalendars`, `?calcClimatology`, `?calcPHU` document the expected inputs.
 
 ## Running the GGCMI / ISIMIP3b pipeline
 
