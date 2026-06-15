@@ -89,6 +89,20 @@ wet_window_decay  <- 0.3      # Gaussian decay scale of the distance weight (uni
 seas_eps          <- 0.25     # seasonality CV-threshold deadband (rel.; 0 = off)
 seas_mtemp_margin <- 1        # seasonality min-temp threshold deadband (deg C)
 
+# Harvest-rule hysteresis (threshold deadband), the calcSeasonality pattern applied to
+# the harvest rule. Harvest dates flip more than sowing (~15-22% of cells) because several
+# HARD thresholds in the harvest rule -- temp_max vs the base/optimum reproductive temps
+# (thermal class), min_ppet vs ppet_min (always-wet), ppet_ratio (wet-season-end existence)
+# -- are grazed by the sliding-window climatology, snapping the selected harvest candidate.
+# harv_eps relaxes the relative P/PET thresholds and harv_tmax_margin the absolute temp_max
+# thresholds toward keeping last year's class. On the 200 worst Spring_Wheat cells harv_eps
+# 0.2 cut growing-period flips 44%. Set deliberately AGGRESSIVE here (bias toward suppressing
+# flicker over catching true regime shifts) pending calibration on the §5 maturity maps.
+# (A 4th source -- the +365 wet-end wrap near the sowing DOY, ~3% of cells -- is left as-is;
+# moving the wrap boundary only relocates the discontinuity.)
+harv_eps          <- 0.3      # harvest-rule P/PET deadband (rel.; 0 = off)
+harv_tmax_margin  <- 2        # harvest-rule temp_max threshold deadband (deg C; used when harv_eps>0)
+
 climate_dirs  <- sub("/+$", "", strsplit(.settings$CLIMATE_DIR, ":")[[1]])  # search list
 climate_dir   <- climate_dirs[1]                                            # legacy (stage 01a)
 isimip3b.path <- .settings$ISIMIP3B_PATH # .clm climate

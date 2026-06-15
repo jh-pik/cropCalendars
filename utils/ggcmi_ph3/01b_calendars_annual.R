@@ -38,6 +38,8 @@ if (!exists("cross_min_duration"))    cross_min_duration    <- 1L
 if (!exists("cross_smooth_window"))   cross_smooth_window   <- 0L
 if (!exists("seas_eps"))              seas_eps              <- 0
 if (!exists("seas_mtemp_margin"))     seas_mtemp_margin     <- 1
+if (!exists("harv_eps"))              harv_eps              <- 0
+if (!exists("harv_tmax_margin"))      harv_tmax_margin      <- 1
 
 parse_years <- function(s) {
   if (is.null(s) || s == "") return(NULL)
@@ -61,8 +63,8 @@ if (!is.null(years_env)) { keep <- cyears %in% years_env; cfiles <- cfiles[keep]
 if (length(cyears) == 0) stop("No climatology files match (run 01a; check YEARS).")
 emit_years <- cyears
 nE <- length(emit_years)
-cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d cross_smooth=%d seas_eps=%g\n",
-            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, cross_smooth_window, seas_eps))
+cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d cross_smooth=%d seas_eps=%g harv_eps=%g harv_tmax_margin=%g\n",
+            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, cross_smooth_window, seas_eps, harv_eps, harv_tmax_margin))
 
 # Crops + pre-extracted parameters. CROPS env (rb_cal names, comma-separated, e.g.
 # "Maize") restricts the crop set for fast dev/validation runs (default: all).
@@ -84,11 +86,11 @@ FLDS     <- c("sow", "ss", "seas", "dflag", "maty_rf", "maty_ir",
               "gp_rf", "gp_ir", "hr_rf", "hr_ir")
 
 # One year of calendars for all cells x crops (identical to the unified driver).
-computeYear <- function(clim, prev_wet, prev_seas) {
+computeYear <- function(clim, prev_wet, prev_seas, prev_harv) {
   res <- mclapply(seq_len(NCELLS), function(j) {
     mcl <- list(dtemp = clim$dtemp[j, ], dprec = clim$dprec[j, ], dpet = clim$dpet[j, ])
     M <- matrix(NA_real_, length(crops), length(FLDS), dimnames = list(NULL, FLDS))
-    wd <- NA_integer_; st <- NA_character_
+    wd <- NA_integer_; st <- NA_character_; hv <- rep(NA_integer_, length(crops))
     for (ci in seq_along(crops)) {
       r <- calcCropCalendars(lon = land_lon[j], lat = land_lat[j], mclimate = mcl,
                              crop_parameters = cparams[[ci]],
@@ -97,8 +99,11 @@ computeYear <- function(clim, prev_wet, prev_seas) {
                              cross_min_duration = cross_min_duration,
                              cross_smooth_window = cross_smooth_window,
                              prev_seas = prev_seas[j], seas_eps = seas_eps,
-                             seas_mtemp_margin = seas_mtemp_margin)
+                             seas_mtemp_margin = seas_mtemp_margin,
+                             prev_harv = prev_harv[j, ci], harv_eps = harv_eps,
+                             harv_tmax_margin = harv_tmax_margin)
       if (ci == 1L) { wd <- attr(r, "wet_doy"); st <- attr(r, "seas_type") }
+      hv[ci] <- attr(r, "harv_state")   # crop-DEPENDENT harvest hysteresis state
       M[ci, ] <- c(r$sowing_doy[1],
                    ifelse(r$sowing_season[1] == "winter", 1, 2),
                    match(r$seasonality_type[1], SEAS_LEV),
@@ -108,13 +113,14 @@ computeYear <- function(clim, prev_wet, prev_seas) {
                    match(r$harvest_reason[1], HARV_LEV),
                    match(r$harvest_reason[2], HARV_LEV))
     }
-    list(M = M, wd = wd, st = st)
+    list(M = M, wd = wd, st = st, hv = hv)
   }, mc.cores = ncores)
   if (any(vapply(res, function(x) !is.list(x) || !is.matrix(x$M), logical(1))))
     stop("computeYear: a worker failed (retry with ncores = 1 to see the error).")
   list(arr = simplify2array(lapply(res, `[[`, "M")),
        wet = vapply(res, function(x) x$wd, integer(1)),
-       seas = vapply(res, function(x) x$st, character(1)))
+       seas = vapply(res, function(x) x$st, character(1)),
+       harv = t(vapply(res, `[[`, integer(length(crops)), "hv")))   # [cells x crops]
 }
 
 # ------------------------------------ #
@@ -131,10 +137,12 @@ store <- function(e, arr) for (ci in seq_along(crops)) for (fi in seq_along(FLDS
 
 prev_wet  <- rep(NA_integer_, NCELLS)
 prev_seas <- rep(NA_character_, NCELLS)
+prev_harv <- matrix(NA_integer_, NCELLS, length(crops))   # crop-dependent harvest state
 for (e in seq_len(nE)) {
   t0 <- Sys.time()
   ce <- new.env(); load(cfiles[e], envir = ce); clim <- ce$clim; rm(ce)
-  cy <- computeYear(clim, prev_wet, prev_seas); prev_wet <- cy$wet; prev_seas <- cy$seas
+  cy <- computeYear(clim, prev_wet, prev_seas, prev_harv)
+  prev_wet <- cy$wet; prev_seas <- cy$seas; prev_harv <- cy$harv
   store(e, cy$arr)
   rm(clim)
   cat(sprintf("  year %d: %.1fs  (rss %.1f GB)\n", emit_years[e],
