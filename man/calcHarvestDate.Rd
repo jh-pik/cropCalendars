@@ -12,7 +12,8 @@ calcHarvestDate(
   sowing_season,
   seasonality,
   harvest_rule,
-  hd_vector
+  hd_vector,
+  daily_temp = NULL
 )
 }
 \arguments{
@@ -37,6 +38,12 @@ calcSowingDate.}
 
 \item{hd_vector}{vector of possible harvest dates as calculated by
 calcHarvestDateVector}
+
+\item{daily_temp}{Numeric vector of length 365, the climatological daily mean
+temperature (\code{dtemp} from \code{calcMonthlyClimate}). When supplied, the
+"too cold to grow" guards use the warmest 30-day window mean instead of
+\code{max(monthly_temp)} (continuous; consistent with \code{calcHarvestRule}).
+\code{NULL} (default) uses the monthly maximum.}
 }
 \description{
 Rule-based estimation of the end of the crop growing period

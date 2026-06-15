@@ -85,7 +85,8 @@ calcCropCalendars <- function(lon                   = NULL,
     temp_min     = 10,
     prev_seas    = prev_seas,
     seas_eps     = seas_eps,
-    mtemp_margin = seas_mtemp_margin
+    mtemp_margin = seas_mtemp_margin,
+    daily_temp   = dtemp
   )
 
   # Resolved wettest-window start, carried forward as hysteresis state. This is the
@@ -128,7 +129,8 @@ calcCropCalendars <- function(lon                   = NULL,
     croppar      = crop_parameters,
     monthly_temp = mtemp,
     monthly_ppet = mppet,
-    seasonality  = seasonality
+    seasonality  = seasonality,
+    daily_temp   = dtemp
   )
 
   harvest_vector <- calcHarvestDateVector(
@@ -152,7 +154,8 @@ calcCropCalendars <- function(lon                   = NULL,
     sowing_season = sowing_season,
     seasonality   = seasonality,
     harvest_rule  = harvest_rule,
-    hd_vector     = harvest_vector
+    hd_vector     = harvest_vector,
+    daily_temp    = dtemp
   )
 
   harvest_day_rf  <- harvest[["hd_rf"]]

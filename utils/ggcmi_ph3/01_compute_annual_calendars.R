@@ -43,7 +43,7 @@ probe_n   <- as.integer(Sys.getenv("PROBE_NEMIT", "0"))   # 0 = full run
 # threshold crossings to persist before they count (see 00_config.R).
 if (!exists("wet_window_eps"))        wet_window_eps        <- 0
 if (!exists("wet_window_decay"))      wet_window_decay      <- 0.3
-if (!exists("clm_smooth_window"))     clm_smooth_window     <- 0L
+if (!exists("cross_smooth_window"))   cross_smooth_window   <- 0L
 if (!exists("cross_min_duration"))    cross_min_duration    <- 1L
 if (!exists("seas_eps"))              seas_eps              <- 0
 if (!exists("seas_mtemp_margin"))     seas_mtemp_margin     <- 1
@@ -229,7 +229,7 @@ prev_seas <- rep(NA_character_, NCELLS)   # per-cell seasonality-class hysteresi
 # or just Y0 otherwise) share one climatology — compute once and replicate.
 blk <- which(emit_years >= Y0 & emit_years <= serve_hi)
 if (length(blk) > 0) { t0 <- Sys.time()
-  cy <- computeYear(ringClimatology(ring, clm_smooth_window), prev_wet, prev_seas)
+  cy <- computeYear(ringClimatology(ring, cross_smooth_window), prev_wet, prev_seas)
   arr0 <- cy$arr; prev_wet <- cy$wet; prev_seas <- cy$seas
   for (e in blk) store(e, arr0)
   cat(sprintf("  block %d-%d (1 climatology): %.1fs\n", min(emit_years[blk]), max(emit_years[blk]),
@@ -241,7 +241,7 @@ if (last_emit - 1L >= serve_hi) for (P in serve_hi:(last_emit - 1L)) {
   ring <- read_push(ring, P)
   Tn <- P + 1L; e <- match(Tn, emit_years)
   if (!is.na(e)) { t0 <- Sys.time()
-    cy <- computeYear(ringClimatology(ring, clm_smooth_window), prev_wet, prev_seas)
+    cy <- computeYear(ringClimatology(ring, cross_smooth_window), prev_wet, prev_seas)
     prev_wet <- cy$wet; prev_seas <- cy$seas
     store(e, cy$arr)
     cat(sprintf("  year %d: %.1fs  (rss %.1f GB)\n", Tn, as.numeric(Sys.time() - t0, units = "secs"),

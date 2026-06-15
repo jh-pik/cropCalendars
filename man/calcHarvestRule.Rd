@@ -4,7 +4,20 @@
 \alias{calcHarvestRule}
 \title{Calculate harvest rule (Minoli et al., 2019)}
 \usage{
-calcHarvestRule(croppar, monthly_temp, monthly_ppet, seasonality)
+calcHarvestRule(
+  croppar,
+  monthly_temp,
+  monthly_ppet,
+  seasonality,
+  daily_temp = NULL
+)
+}
+\arguments{
+\item{daily_temp}{Numeric vector of length 365, the climatological daily mean
+temperature (\code{dtemp} from \code{calcMonthlyClimate}). When supplied, the
+warmest-month temperature uses the warmest 30-day window mean of this series
+instead of \code{max(monthly_temp)} (continuous, no month-boundary
+quantisation). \code{NULL} (default) uses the monthly maximum (backward compatible).}
 }
 \description{
 This function performs an agro-climatic classification of

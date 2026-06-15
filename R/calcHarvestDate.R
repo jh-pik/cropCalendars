@@ -22,6 +22,11 @@
 #' @param harvest_rule harvest rule as calculated by calcHarvestRule
 #' @param hd_vector vector of possible harvest dates as calculated by
 #' calcHarvestDateVector
+#' @param daily_temp Numeric vector of length 365, the climatological daily mean
+#' temperature (\code{dtemp} from \code{calcMonthlyClimate}). When supplied, the
+#' "too cold to grow" guards use the warmest 30-day window mean instead of
+#' \code{max(monthly_temp)} (continuous; consistent with \code{calcHarvestRule}).
+#' \code{NULL} (default) uses the monthly maximum.
 #' @export
 
 calcHarvestDate <- function(croppar,
@@ -31,13 +36,19 @@ calcHarvestDate <- function(croppar,
                             sowing_season,
                             seasonality,
                             harvest_rule,
-                            hd_vector
+                            hd_vector,
+                            daily_temp = NULL
                             ) {
 
   # Extract individual parameter names and values
   list2env(croppar, environment())  # 1-row data.frame: columns -> scalar params
 
   ndays_year <- 365
+
+  # Warmest-month temperature for the "too cold to grow" guards below: daily
+  # warmest-30-day-window mean when the daily climatology is supplied, else the
+  # calendar-month maximum (continuous; consistent with calcHarvestRule).
+  warmest_t <- if (!is.null(daily_temp)) .warmestWindowMean(daily_temp) else max(monthly_temp)
 
   # Extract individual individual values from hd_vector
   for (i in names(hd_vector)) {
@@ -111,7 +122,7 @@ calcHarvestDate <- function(croppar,
         hd_rf <- hd_first
         hd_ir <- hd_first
       } else if (harvest_rule==6) {
-        if (sowing_month==0 && max(monthly_temp) < temp_fall) {
+        if (sowing_month==0 && warmest_t < temp_fall) {
           hd_rf <- hd_first
           hd_ir <- hd_first
         } else {
@@ -137,7 +148,7 @@ calcHarvestDate <- function(croppar,
         hd_rf <- hd_first
         hd_ir <- hd_first
       } else if (harvest_rule==6){
-        if (sowing_month==0 && max(monthly_temp) < temp_spring) {
+        if (sowing_month==0 && warmest_t < temp_spring) {
           hd_rf <- hd_first
           hd_ir <- hd_first
         } else if (seasonality=="PRECTEMP") { # T not stressful, only water limitation applies

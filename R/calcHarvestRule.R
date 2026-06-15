@@ -13,18 +13,26 @@
 #'
 #' @seealso calcSeasonality
 #'
+#' @param daily_temp Numeric vector of length 365, the climatological daily mean
+#'   temperature (\code{dtemp} from \code{calcMonthlyClimate}). When supplied, the
+#'   warmest-month temperature uses the warmest 30-day window mean of this series
+#'   instead of \code{max(monthly_temp)} (continuous, no month-boundary
+#'   quantisation). \code{NULL} (default) uses the monthly maximum (backward compatible).
 #' @export
 calcHarvestRule <- function(croppar,
                             monthly_temp,
                             monthly_ppet,
-                            seasonality
+                            seasonality,
+                            daily_temp = NULL
                             ) {
 
   # extract individual parameter names and values
   list2env(croppar, environment())  # 1-row data.frame: columns -> scalar params
 
-  temp_max <- max(monthly_temp)
-  temp_min <- min(monthly_temp)
+  # Warmest-month temperature driving the t-low/-mid/-high split: daily
+  # warmest-30-day-window mean when the daily climatology is supplied, else the
+  # calendar-month maximum.
+  temp_max <- if (!is.null(daily_temp)) .warmestWindowMean(daily_temp) else max(monthly_temp)
 
   if (seasonality == "NO_SEASONALITY") {
     if (temp_max <= temp_base_rphase) {

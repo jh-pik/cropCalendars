@@ -81,6 +81,21 @@ calcDoyWetMonth <- function(daily_prec, daily_pet,
   as.integer(which.max(score))
 }
 
+# Monthly fallback for calcDoyWetMonth, for callers without a daily climatology.
+# Wettest 4-month (~120-day) window by RATIO OF SUMS over the monthly P and PET
+# TOTALS (sum_4 P / sum_4 PET, circular), returning the mid-day of the window's
+# first month. This is the bug-free monthly analogue of the daily 120-day
+# SUM P / SUM PET rule: it sums P and PET SEPARATELY -- never the monthly P/PET
+# ratios, a single near-zero-PET month of which makes the ratio explode and dominate
+# the window (the legacy bug) -- and uses no daily interpolation. It is just coarser
+# (~1-month resolution), as any monthly fallback must be. No hysteresis (eps/decay):
+# that is a daily sliding-window-pipeline concern.
+.wetDoyMonthly <- function(monthly_prec, monthly_pet) {
+  midday <- c(15, 43, 74, 104, 135, 165, 196, 227, 257, 288, 318, 349)
+  ws <- .circRollSum(monthly_prec, 4L) / pmax(.circRollSum(monthly_pet, 4L), 1e-6)
+  as.integer(midday[which.max(ws)])
+}
+
 # Circular rolling-window sum: returns, for each start position p (1-based), the
 # sum of `w` consecutive values of `x` wrapping across the year boundary. O(n) via
 # a cumulative sum (the previous per-window vapply was O(n*w) and dominated the

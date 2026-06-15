@@ -61,8 +61,11 @@ calcHarvestDateVector <- function(croppar,
   ndays_year <- 365
 
   # Daily climatologies (one value per DOY 1:365). dtemp/dprec/dpet from the cache
-  # are already on this grid; fall back to interpolating the monthly values.
-  if (is.null(daily_temp)) daily_temp <- .monthlyToDoy365(monthly_temp)
+  # are already on this grid; without a daily temperature series, interpolate the
+  # monthly means onto the grid for the hot-day crossings (which have no pure-monthly
+  # form). have_dtemp also selects the legacy mid-day for warmest_day below.
+  have_dtemp <- !is.null(daily_temp)
+  if (!have_dtemp) daily_temp <- .monthlyToDoy365(monthly_temp)
   # Spike-free daily P/PET for the wet-season-end crossing: the ratio of the
   # per-DOY mean P and mean PET (never blows up — mean PET on a DOY is never ~0),
   # unlike the mean of daily P/PET ratios. Fall back to the interpolated monthly
@@ -72,9 +75,17 @@ calcHarvestDateVector <- function(croppar,
   } else {
     daily_ppet <- .monthlyToDoy365(monthly_ppet)
   }
-  # The P/PET month-over-month difference has no daily counterpart in the cache,
-  # so it is interpolated onto the daily grid for a consistent crossing search.
-  daily_ppet_diff <- .monthlyToDoy365(monthly_ppet_diff)
+  # P/PET month-over-month difference (declining-moisture trend). Use the daily
+  # analogue -- the 30-day Sum P / Sum PET centred at each DOY minus the window
+  # centred ~30 days later -- when the daily P and PET are supplied; this removes the
+  # residual whole-month quantisation of the second wet-season-end candidate
+  # (doy_wet2). Fall back to interpolating the 12 monthly differences only when the
+  # daily series are absent.
+  if (!is.null(daily_prec) && !is.null(daily_pet)) {
+    daily_ppet_diff <- .dailyPpetDiff(daily_prec, daily_pet)
+  } else {
+    daily_ppet_diff <- .monthlyToDoy365(monthly_ppet_diff)
+  }
 
   # Shortest cycle: crop lower biological limit
   hd_first <- sowing_date + min_growingseason
@@ -107,9 +118,13 @@ calcHarvestDateVector <- function(croppar,
     min(doy_wet_vec[doy_wet_vec != -9999]),
     -9999
     )
-  # If does not find harvest date and it is always high rainfall
+  # If does not find harvest date and it is always high rainfall. The "driest month"
+  # P/PET uses the driest 30-day window of the daily Sum P / Sum PET when available
+  # (continuous; no month quantisation), else the calendar-month minimum.
+  min_ppet <- if (!is.null(daily_prec) && !is.null(daily_pet))
+    .driestWindowPpet(daily_prec, daily_pet) else min(monthly_ppet)
   if (doy_wet1 == -9999) {
-    if (min(monthly_ppet) >= ppet_min) {
+    if (min_ppet >= ppet_min) {
       hd_wetseas <- hd_last
     } else {
       hd_wetseas <- hd_first
@@ -120,8 +135,10 @@ calcHarvestDateVector <- function(croppar,
 
   # Warmest period of the year ----
   # Centre DOY of the warmest 30-day window of the daily climatology (the daily
-  # analogue of the previous "mid-day of the warmest month").
-  warmest_day <- .doyWarmestWindow(daily_temp, width = 30)
+  # analogue of the previous "mid-day of the warmest month"); the legacy monthly
+  # fallback is exactly that mid-day when the daily series is absent.
+  warmest_day <- if (have_dtemp) .doyWarmestWindow(daily_temp, width = 30) else
+    c(15, 43, 74, 104, 135, 165, 196, 227, 257, 288, 318, 349)[which.max(monthly_temp)]
   hd_temp_base <- ifelse(
     sowing_season == "winter", warmest_day, warmest_day + rphase_duration
     )

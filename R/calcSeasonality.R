@@ -28,6 +28,13 @@
 #' @param mtemp_margin Absolute deadband (deg C) applied to the \code{min_temp}
 #'   test when \code{seas_eps > 0} (default 1). A relative \code{seas_eps} is not
 #'   meaningful on a temperature threshold, so an absolute margin is used there.
+#' @param daily_temp Numeric vector of length 365, the climatological daily mean
+#'   temperature (the \code{dtemp} element from \code{calcMonthlyClimate}). When
+#'   supplied, the coldest-month test uses the coldest 30-day window mean of this
+#'   series instead of \code{min(monthly_temp)} (continuous, no month-boundary
+#'   quantisation). The CV classifiers stay on the 12 monthly values -- a daily CV
+#'   has far larger variance and would invalidate the calibrated 0.4 / 0.010
+#'   thresholds. \code{NULL} (default) keeps the monthly minimum (backward compatible).
 #'
 #' @export
 calcSeasonality <- function(monthly_temp,
@@ -35,12 +42,15 @@ calcSeasonality <- function(monthly_temp,
                             temp_min     = 10,
                             prev_seas    = NA_character_,
                             seas_eps     = 0,
-                            mtemp_margin = 1
+                            mtemp_margin = 1,
+                            daily_temp   = NULL
                             ) {
 
   var_coeff_prec <- calcVarCoeff(monthly_prec)
   var_coeff_temp <- calcVarCoeff(deg2k(monthly_temp))
-  min_temp       <- min(monthly_temp)
+  # Coldest-month temperature: daily coldest-30-day-window mean when the daily
+  # climatology is supplied, else the calendar-month minimum (see @param daily_temp).
+  min_temp       <- if (!is.null(daily_temp)) .coldestWindowMean(daily_temp) else min(monthly_temp)
 
   # Threshold deadband (hysteresis). With no prior state / seas_eps = 0 these are
   # the plain Waha thresholds, so the classification is unchanged (backward compatible).

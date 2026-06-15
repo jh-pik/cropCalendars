@@ -31,7 +31,7 @@ scen <- args[2]
 
 W         <- clm_avg_years
 emit_step <- as.integer(Sys.getenv("EMIT_STEP", as.character(clm_emit_step)))
-if (!exists("clm_smooth_window")) clm_smooth_window <- 0L
+if (!exists("cross_smooth_window")) cross_smooth_window <- 0L
 
 # YEARS subset (dev iteration). "" = all emit years.
 parse_years <- function(s) {
@@ -103,7 +103,7 @@ if (length(years_write) == 0) stop("YEARS subset does not intersect the emit yea
 last_needed <- max(years_write)
 cat(sprintf("\n%s %s | window=%d emit_step=%d | product %d-%d%s\n  writing %d climatology years (%d..%d), smooth_window=%d\n",
             gcm, scen, W, emit_step, Y0, Yend, if (seeded) " (seeded from historical)" else "",
-            length(years_write), min(years_write), max(years_write), clm_smooth_window))
+            length(years_write), min(years_write), max(years_write), cross_smooth_window))
 
 read_push <- function(ring, yr) {
   pushClimateYear(ring,
@@ -122,7 +122,7 @@ read_push <- function(ring, yr) {
 save_clim <- function(yr, clim) {
   clim$dppet <- NULL
   fn <- file.path(clim_dir, sprintf("climatology_%s_%s_%d.Rdata", gcm, scen, yr))
-  save(clim, grid_clm, gcm, scen, yr, W, clm_smooth_window, file = fn, compress = FALSE)
+  save(clim, grid_clm, gcm, scen, yr, W, cross_smooth_window, file = fn, compress = FALSE)
 }
 
 # ------------------------------------ #
@@ -149,7 +149,7 @@ if (Y0 - W >= data_start && file.exists(sf)) {
 # Anchored block: years [Y0, serve_hi] share the first full-window climatology.
 blk <- years_write[years_write >= Y0 & years_write <= serve_hi]
 if (length(blk) > 0) { t0 <- Sys.time()
-  clim_blk <- ringClimatology(ring, clm_smooth_window)
+  clim_blk <- ringClimatology(ring, cross_smooth_window)
   for (yr in blk) save_clim(yr, clim_blk)
   cat(sprintf("  block %d-%d (1 climatology -> %d files): %.1fs\n",
               min(blk), max(blk), length(blk), as.numeric(Sys.time() - t0, units = "secs"))) }
@@ -159,7 +159,7 @@ if (last_needed - 1L >= serve_hi) for (P in serve_hi:(last_needed - 1L)) {
   ring <- read_push(ring, P)
   Tn <- P + 1L
   if (Tn %in% years_write) { t0 <- Sys.time()
-    save_clim(Tn, ringClimatology(ring, clm_smooth_window))
+    save_clim(Tn, ringClimatology(ring, cross_smooth_window))
     cat(sprintf("  year %d: %.1fs  (rss %.1f GB)\n", Tn, as.numeric(Sys.time() - t0, units = "secs"),
                 as.numeric(gc()[2, 2]) / 1024)) }
 }

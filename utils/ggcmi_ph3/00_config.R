@@ -53,16 +53,24 @@ clm_avg_years     <- 30       # climate-averaging window length (years)
 clm_emit_step     <- 1        # compute calendars every N years (1 = fully annual)
 pet_method        <- "fao56"  # PET: "fao56" (Penman-Monteith) or "pt" (Priestley-Taylor)
 phu_smooth_window <- 1        # PHU temperature-averaging window (years; 1 = period-exact)
-# Daily-climatology smoothing + sustained-crossing guard. These attack the
-# year-to-year sowing/harvest oscillation at its source: the per-DOY daily means
-# (dtemp/dprec/dpet) carry ~1 degC / spiky day-to-day jitter, and the point
-# detectors (calcDoyCrossThreshold spring/fall + wet-season-end crossings) latch
-# onto single-day blips -> spurious crossings ~130 days off (e.g. a 1-day dip
-# through temp_spring=14 in the autumn descent). clm_smooth_window applies a
-# centred circular running mean to the daily climatologies; cross_min_duration
-# requires a crossing to persist that many days before it counts.
-clm_smooth_window <- 15L      # daily-climatology smoothing window (days, odd; 0/1 = off)
-cross_min_duration <- 5L      # min sustained-excursion days for calcDoyCrossThreshold (1 = off)
+# Threshold-crossing noise filters (a matched pair). They attack the year-to-year
+# sowing/harvest oscillation at its source: the per-DOY daily climatology
+# (dtemp/dprec/dpet) carries ~1 degC / spiky day-to-day jitter, and the point
+# detectors (calcDoyCrossThreshold: spring/fall temperature + wet-season-end
+# crossings) otherwise latch onto a single-day blip -> a spurious crossing ~130 days
+# off (e.g. a 1-day dip through temp_spring=14 in the autumn descent). The two knobs:
+#   cross_smooth_window : centred circular running mean applied to the daily
+#       climatologies BEFORE crossing detection (days, odd; 0/1 = off).
+#   cross_min_duration  : a crossing must stay on the new side of the threshold for
+#       at least this many days to count (1 = off).
+# NB this is NOT a general climatology smoother. The window/extremum reductions
+# (warmest/coldest-month temperature, driest-month P/PET, the 120-day wettest
+# window) use their OWN structural 30-day (= 1 month) window -- that is what makes
+# them monthly-equivalent -- which dominates cross_smooth_window, so those rules are
+# ~invariant to it. The two smoothings therefore serve different rules and do not
+# meaningfully compound.
+cross_smooth_window <- 15L    # crossing-detector smoothing window (days, odd; 0/1 = off)
+cross_min_duration  <- 5L     # min sustained-excursion days for calcDoyCrossThreshold (1 = off)
 
 # Wettest-window hysteresis (distance-weighted, max-normalised selection). For the
 # ~57% of PREC/PRECTEMP cells with a near-tied second 120-day P/PET peak, the plain
