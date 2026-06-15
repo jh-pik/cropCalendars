@@ -81,12 +81,14 @@ read_year_cells <- function(fnames, yr, conv = identity) {
   if (is.na(wi)) stop("No climate file covering year ", yr)
   dates_f <- seqDates(paste0(rng$fy[wi], "-01-01"), paste0(rng$ly[wi], "-12-31"), "day")
   pos <- which(as.integer(substr(dates_f, 1, 4)) == yr)
-  arr <- cropCalendars::readNcdf(fnames[wi], dim_subset = list(time = (pos[1] - 1):(pos[length(pos)] - 1)))
+  arr <- cropCalendars::readNcdf(fnames[wi], dim_subset = list(time = pos[1]:pos[length(pos)]),
+                                 index_dims = "time")
   conv(matrix(arr, nrow = dim(arr)[1] * dim(arr)[2])[cell_lin, , drop = FALSE])
 }
 
 # Cell set = the fixed GGCMI 67420-cell land mask.
-arr0     <- cropCalendars::readNcdf(clm_file_list[["tas"]][1], dim_subset = list(time = 0:0))
+arr0     <- cropCalendars::readNcdf(clm_file_list[["tas"]][1], dim_subset = list(time = 1L),
+                                    index_dims = "time")
 lon_axis <- as.numeric(dimnames(arr0)[[1]]); lat_axis <- as.numeric(dimnames(arr0)[[2]])
 nlon     <- length(lon_axis); rm(arr0)
 lc   <- read.csv(file.path(work_dir, "ggcmi_landcells.csv"))
