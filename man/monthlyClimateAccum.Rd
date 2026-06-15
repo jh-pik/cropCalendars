@@ -7,7 +7,7 @@
 \alias{finalizeMonthlyClimate}
 \title{Streaming, cell-vectorised monthly-climate accumulator}
 \usage{
-initMonthlyClimate(ncells, pet_method = c("fao56", "pt"))
+initMonthlyClimate(ncells, pet_method = c("fao56", "pt"), daily_only = FALSE)
 
 addYearMonthlyClimate(
   acc,
@@ -29,6 +29,12 @@ finalizeMonthlyClimate(acc, smooth_window = 0L)
 
 \item{pet_method}{PET method, \code{"pt"} (Priestley-Taylor, calcPET) or
 \code{"fao56"} (FAO-56 Penman-Monteith, calcPET_FAO56).}
+
+\item{daily_only}{If \code{TRUE}, accumulate and return only the daily fields
+(\code{dtemp}, \code{dprec}, \code{dpet}) -- the monthly aggregates and the daily
+P/PET sum (\code{dppet}) are neither allocated nor computed. Used by the sliding
+ring, whose only consumer reconstructs the monthly seasonality stats from the
+daily climatology downstream. Default \code{FALSE} = the full output.}
 
 \item{acc}{accumulator from \code{initMonthlyClimate}.}
 
@@ -54,9 +60,10 @@ integrates over 120 days).}
 }
 \value{
 `initMonthlyClimate` returns an accumulator (a list of zeroed matrices);
-  `finalizeMonthlyClimate` returns the monthly climate as a list of seven fields
-  (vectors when `ncells == 1`, otherwise `[ncells x 12]` / `[ncells x 365]`
-  matrices), matching `calcMonthlyClimate()`'s return.
+  `finalizeMonthlyClimate` returns the climate as a list of fields (vectors when
+  `ncells == 1`, otherwise `[ncells x 12]` / `[ncells x 365]` matrices): the full
+  nine fields matching `calcMonthlyClimate()`, or only `dtemp`/`dprec`/`dpet` when
+  the accumulator was built with `daily_only = TRUE`.
 }
 \description{
 Building blocks for computing the average monthly climate (and the

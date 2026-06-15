@@ -22,25 +22,41 @@
 #' @param ncells number of grid cells the accumulator covers.
 #' @param pet_method PET method, \code{"pt"} (Priestley-Taylor, calcPET) or
 #'   \code{"fao56"} (FAO-56 Penman-Monteith, calcPET_FAO56).
+#' @param daily_only If \code{TRUE}, accumulate and return only the daily fields
+#'   (\code{dtemp}, \code{dprec}, \code{dpet}) -- the monthly aggregates and the daily
+#'   P/PET sum (\code{dppet}) are neither allocated nor computed. Used by the sliding
+#'   ring, whose only consumer reconstructs the monthly seasonality stats from the
+#'   daily climatology downstream. Default \code{FALSE} = the full output.
 #' @return `initMonthlyClimate` returns an accumulator (a list of zeroed matrices);
-#'   `finalizeMonthlyClimate` returns the monthly climate as a list of seven fields
-#'   (vectors when `ncells == 1`, otherwise `[ncells x 12]` / `[ncells x 365]`
-#'   matrices), matching `calcMonthlyClimate()`'s return.
+#'   `finalizeMonthlyClimate` returns the climate as a list of fields (vectors when
+#'   `ncells == 1`, otherwise `[ncells x 12]` / `[ncells x 365]` matrices): the full
+#'   nine fields matching `calcMonthlyClimate()`, or only `dtemp`/`dprec`/`dpet` when
+#'   the accumulator was built with `daily_only = TRUE`.
 #' @name monthlyClimateAccum
 #' @export
-initMonthlyClimate <- function(ncells, pet_method = c("fao56", "pt")) {
+initMonthlyClimate <- function(ncells, pet_method = c("fao56", "pt"),
+                               daily_only = FALSE) {
   pet_method <- match.arg(pet_method)
-  list(
-    M_tas  = matrix(0, ncells, 12),  M_pr   = matrix(0, ncells, 12),
-    M_pet  = matrix(0, ncells, 12),  M_ppet = matrix(0, ncells, 12),
-    D_tsum = matrix(0, ncells, 365), D_psum = matrix(0, ncells, 365),
+  acc <- list(
     # Separate daily P and PET sums so the wet-season rules can use a spike-free
     # ratio-of-sums (ΣP/ΣPET) instead of the mean of daily P/PET ratios, which
     # blows up on the rare day where PET ≈ 0.
-    D_prsum  = matrix(0, ncells, 365), D_petsum = matrix(0, ncells, 365),
-    D_cnt  = numeric(365), nyears = 0L,
-    pet_method = pet_method, ncells = ncells
+    D_tsum   = matrix(0, ncells, 365), D_prsum  = matrix(0, ncells, 365),
+    D_petsum = matrix(0, ncells, 365), D_cnt    = numeric(365),
+    nyears = 0L, pet_method = pet_method, ncells = ncells,
+    daily_only = daily_only
   )
+  # The monthly accumulators (mtemp/mprec/mpet/mppet) and the daily P/PET sum (dppet)
+  # are only needed for the per-pixel calcMonthlyClimate() full output. The sliding
+  # ring runs daily_only -- it accumulates only the daily fields, and the seasonality
+  # monthly stats are reconstructed from the daily climatology downstream -- which
+  # also trims the ring's per-slot footprint.
+  if (!daily_only) {
+    acc$M_tas <- matrix(0, ncells, 12); acc$M_pr    <- matrix(0, ncells, 12)
+    acc$M_pet <- matrix(0, ncells, 12); acc$M_ppet  <- matrix(0, ncells, 12)
+    acc$D_psum <- matrix(0, ncells, 365)
+  }
+  acc
 }
 
 # Daily PET for one year, vectorised over cells. temp/swdown/... are [ncells x ndays].
@@ -80,25 +96,28 @@ addYearMonthlyClimate <- function(acc, temp, prec, dates,
   doy <- date_to_doy(dates, skip_feb29 = TRUE)
 
   pet  <- .petDaily(temp, swdown, lwdown, windspeed, humid, ps, lat, doy, acc$pet_method)
-  ppet <- prec / pmax(pet, 1e-6)
 
-  for (m in 1:12) {
-    dom     <- which(mon == m)
-    pr_mon  <- rowSums(prec[, dom, drop = FALSE])
-    pet_mon <- rowSums(pet[,  dom, drop = FALSE])
-    acc$M_tas[,  m] <- acc$M_tas[,  m] + rowMeans(temp[, dom, drop = FALSE])
-    acc$M_pr[,   m] <- acc$M_pr[,   m] + pr_mon
-    acc$M_pet[,  m] <- acc$M_pet[,  m] + pet_mon
-    acc$M_ppet[, m] <- acc$M_ppet[, m] + pr_mon / pmax(pet_mon, 1e-6)
+  daily_only <- isTRUE(acc$daily_only)
+  if (!daily_only) {
+    ppet <- prec / pmax(pet, 1e-6)
+    for (m in 1:12) {
+      dom     <- which(mon == m)
+      pr_mon  <- rowSums(prec[, dom, drop = FALSE])
+      pet_mon <- rowSums(pet[,  dom, drop = FALSE])
+      acc$M_tas[,  m] <- acc$M_tas[,  m] + rowMeans(temp[, dom, drop = FALSE])
+      acc$M_pr[,   m] <- acc$M_pr[,   m] + pr_mon
+      acc$M_pet[,  m] <- acc$M_pet[,  m] + pet_mon
+      acc$M_ppet[, m] <- acc$M_ppet[, m] + pr_mon / pmax(pet_mon, 1e-6)
+    }
   }
 
   # A DOY can recur within a leap year (Feb 29 -> 59), so accumulate sum and count.
   for (k in seq_len(ncol(temp))) {
     d <- doy[k]
     acc$D_tsum[,   d] <- acc$D_tsum[,   d] + temp[, k]
-    acc$D_psum[,   d] <- acc$D_psum[,   d] + ppet[, k]
     acc$D_prsum[,  d] <- acc$D_prsum[,  d] + prec[, k]
     acc$D_petsum[, d] <- acc$D_petsum[, d] + pet[,  k]
+    if (!daily_only) acc$D_psum[, d] <- acc$D_psum[, d] + ppet[, k]
   }
   acc$D_cnt  <- acc$D_cnt + tabulate(doy, nbins = 365)
   acc$nyears <- acc$nyears + 1L
@@ -118,15 +137,9 @@ addYearMonthlyClimate <- function(acc, temp, prec, dates,
 #' @export
 finalizeMonthlyClimate <- function(acc, smooth_window = 0L) {
   if (acc$nyears == 0L) stop("No years accumulated.")
-  mtemp      <- round(acc$M_tas  / acc$nyears, 5)
-  mprec      <- round(acc$M_pr   / acc$nyears, 5)
-  mpet       <- round(acc$M_pet  / acc$nyears, 5)
-  mppet      <- round(acc$M_ppet / acc$nyears, 5)
-  mppet_diff <- mppet - mppet[, c(2:12, 1), drop = FALSE]
-  dtemp      <- sweep(acc$D_tsum,   2, acc$D_cnt, "/")
-  dppet      <- sweep(acc$D_psum,   2, acc$D_cnt, "/")
-  dprec      <- sweep(acc$D_prsum,  2, acc$D_cnt, "/")
-  dpet       <- sweep(acc$D_petsum, 2, acc$D_cnt, "/")
+  dtemp <- sweep(acc$D_tsum,   2, acc$D_cnt, "/")
+  dprec <- sweep(acc$D_prsum,  2, acc$D_cnt, "/")
+  dpet  <- sweep(acc$D_petsum, 2, acc$D_cnt, "/")
 
   if (smooth_window > 1L) {
     dtemp <- .circSmooth(dtemp, smooth_window)
@@ -134,9 +147,21 @@ finalizeMonthlyClimate <- function(acc, smooth_window = 0L) {
     dpet  <- .circSmooth(dpet,  smooth_window)
   }
 
-  out <- list(mtemp = mtemp, mprec = mprec, mpet = mpet, mppet = mppet,
-              mppet_diff = mppet_diff, dtemp = dtemp, dppet = dppet,
-              dprec = dprec, dpet = dpet)
+  # daily_only accumulators (the sliding ring) carry no monthly sums and no dppet; the
+  # seasonality monthly stats are reconstructed from the daily climatology downstream.
+  if (isTRUE(acc$daily_only)) {
+    out <- list(dtemp = dtemp, dprec = dprec, dpet = dpet)
+  } else {
+    mtemp      <- round(acc$M_tas  / acc$nyears, 5)
+    mprec      <- round(acc$M_pr   / acc$nyears, 5)
+    mpet       <- round(acc$M_pet  / acc$nyears, 5)
+    mppet      <- round(acc$M_ppet / acc$nyears, 5)
+    mppet_diff <- mppet - mppet[, c(2:12, 1), drop = FALSE]
+    dppet      <- sweep(acc$D_psum, 2, acc$D_cnt, "/")
+    out <- list(mtemp = mtemp, mprec = mprec, mpet = mpet, mppet = mppet,
+                mppet_diff = mppet_diff, dtemp = dtemp, dppet = dppet,
+                dprec = dprec, dpet = dpet)
+  }
   if (acc$ncells == 1L) out <- lapply(out, as.vector) # match per-pixel contract
   out
 }

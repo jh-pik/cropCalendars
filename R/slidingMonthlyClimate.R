@@ -17,9 +17,10 @@
 #' @param ncells number of grid cells.
 #' @param window averaging window length in years (e.g. 30).
 #' @param pet_method PET method, passed to the engine (\code{"fao56"} / \code{"pt"}).
-#' @return `initClimateRing` returns a ring; `ringClimatology` returns the same
-#'   list of fields as `finalizeMonthlyClimate` (mtemp, mprec, mpet, mppet,
-#'   mppet_diff, dtemp, dppet, dprec, dpet); `dppet` is left at zero (unused).
+#' @return `initClimateRing` returns a ring; `ringClimatology` returns the daily
+#'   climatology only (`dtemp`, `dprec`, `dpet`) -- the ring accumulates only the
+#'   daily fields, and the monthly seasonality stats are reconstructed from these
+#'   downstream (see \code{calcCropCalendars}).
 #' @name slidingMonthlyClimate
 #' @export
 initClimateRing <- function(ncells, window, pet_method = c("fao56", "pt")) {
@@ -31,16 +32,15 @@ initClimateRing <- function(ncells, window, pet_method = c("fao56", "pt")) {
     slots      = vector("list", window),  # circular buffer of one-year accumulators
     pos        = 0L,                       # index of the most recently written slot
     count      = 0L,                       # years currently in the window
-    # Running field-wise sum of the slots, as a zeroed engine accumulator. dppet
-    # (D_psum) is dropped (no rule uses it), so it is never accumulated.
-    run        = initMonthlyClimate(ncells, pet_method)
+    # Running field-wise sum of the slots, as a zeroed daily_only engine accumulator:
+    # the ring carries only the daily fields (no monthly sums, no dppet); the monthly
+    # seasonality stats are reconstructed from the daily climatology downstream.
+    run        = initMonthlyClimate(ncells, pet_method, daily_only = TRUE)
   )
 }
 
-# Fields summed across the ring (everything finalizeMonthlyClimate reads except
-# D_psum, which stays zero).
-.ringFields <- c("M_tas", "M_pr", "M_pet", "M_ppet",
-                 "D_tsum", "D_prsum", "D_petsum", "D_cnt")
+# Daily fields summed across the ring (everything the daily_only finalize reads).
+.ringFields <- c("D_tsum", "D_prsum", "D_petsum", "D_cnt")
 
 #' @rdname slidingMonthlyClimate
 #' @param ring ring from \code{initClimateRing}.
@@ -50,14 +50,14 @@ initClimateRing <- function(ncells, window, pet_method = c("fao56", "pt")) {
 pushClimateYear <- function(ring, temp, prec, dates,
                             swdown = NULL, lwdown = NULL, windspeed = NULL,
                             humid = NULL, ps = 101325, lat = NULL) {
-  # One-year contribution, via the validated engine (single-year accumulator).
+  # One-year contribution, via the validated engine (single-year daily_only
+  # accumulator: only the daily sums are accumulated and retained per slot).
   slot <- addYearMonthlyClimate(
-    initMonthlyClimate(ring$ncells, ring$pet_method),
+    initMonthlyClimate(ring$ncells, ring$pet_method, daily_only = TRUE),
     temp = temp, prec = prec, dates = dates,
     swdown = swdown, lwdown = lwdown, windspeed = windspeed,
     humid = humid, ps = ps, lat = lat
   )
-  slot$D_psum <- NULL  # not retained (dppet dropped) — saves ~1/4 of the memory
 
   newpos <- (ring$pos %% ring$window) + 1L
   if (ring$count == ring$window) {                 # window full → drop the oldest

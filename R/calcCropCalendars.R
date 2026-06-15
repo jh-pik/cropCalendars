@@ -75,14 +75,19 @@ calcCropCalendars <- function(lon                   = NULL,
     )
   }
 
-  # Get weather data of the grid cell
-  mtemp      <- mclimate$mtemp
-  mprec      <- mclimate$mprec
-  mppet      <- mclimate$mppet
-  mppet_diff <- mclimate$mppet_diff
+  # Get weather data of the grid cell. The sliding-window ring serves only the daily
+  # climatology, so the monthly temperature/precipitation used by the seasonality CV
+  # classifier are reconstructed from the daily series when absent (per-pixel
+  # calcMonthlyClimate still supplies them directly). The monthly P/PET fields are
+  # only the harvest-rule monthly FALLBACK inputs -- never used when the daily series
+  # are present -- so they stay NULL on the ring path.
   dtemp      <- mclimate$dtemp
   dprec      <- mclimate$dprec
   dpet       <- mclimate$dpet
+  mtemp      <- if (!is.null(mclimate$mtemp)) mclimate$mtemp else .monthlyFromDaily(dtemp, "mean")
+  mprec      <- if (!is.null(mclimate$mprec)) mclimate$mprec else .monthlyFromDaily(dprec, "sum")
+  mppet      <- mclimate$mppet
+  mppet_diff <- mclimate$mppet_diff
 
   # Seasonality type
   seasonality <- calcSeasonality(

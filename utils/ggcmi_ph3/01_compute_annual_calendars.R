@@ -136,9 +136,7 @@ computeYear <- function(clim, prev_wet, prev_seas) {
   # with the large parent heap live (ring buffer + preallocated OUT), doubled the
   # per-worker copy-on-write footprint (168 GB -> 340 GB at 64 cores) and OOM'd.
   res <- mclapply(seq_len(NCELLS), function(j) {
-    mcl <- list(mtemp = clim$mtemp[j, ], mprec = clim$mprec[j, ], mpet = clim$mpet[j, ],
-                mppet = clim$mppet[j, ], mppet_diff = clim$mppet_diff[j, ],
-                dtemp = clim$dtemp[j, ], dprec = clim$dprec[j, ], dpet = clim$dpet[j, ])
+    mcl <- list(dtemp = clim$dtemp[j, ], dprec = clim$dprec[j, ], dpet = clim$dpet[j, ])
     M <- matrix(NA_real_, length(crops), length(FLDS), dimnames = list(NULL, FLDS))
     wd <- NA_integer_; st <- NA_character_
     for (ci in seq_along(crops)) {

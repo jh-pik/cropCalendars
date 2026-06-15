@@ -86,9 +86,7 @@ FLDS     <- c("sow", "ss", "seas", "dflag", "maty_rf", "maty_ir",
 # One year of calendars for all cells x crops (identical to the unified driver).
 computeYear <- function(clim, prev_wet, prev_seas) {
   res <- mclapply(seq_len(NCELLS), function(j) {
-    mcl <- list(mtemp = clim$mtemp[j, ], mprec = clim$mprec[j, ], mpet = clim$mpet[j, ],
-                mppet = clim$mppet[j, ], mppet_diff = clim$mppet_diff[j, ],
-                dtemp = clim$dtemp[j, ], dprec = clim$dprec[j, ], dpet = clim$dpet[j, ])
+    mcl <- list(dtemp = clim$dtemp[j, ], dprec = clim$dprec[j, ], dpet = clim$dpet[j, ])
     M <- matrix(NA_real_, length(crops), length(FLDS), dimnames = list(NULL, FLDS))
     wd <- NA_integer_; st <- NA_character_
     for (ci in seq_along(crops)) {

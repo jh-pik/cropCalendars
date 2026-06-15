@@ -13,6 +13,21 @@
 # the strict analogue of the monthly reduction it supersedes. They reuse the
 # package-internal .circRollSum (O(n) circular window sum) and .doyWarmestWindow.
 
+# Reconstruct the 12 calendar-month values from a 365-day DOY climatology: the
+# monthly mean (temperature) or monthly sum (precipitation) over each month's DOYs.
+# This lets the sliding ring carry only the daily climatology and build the monthly
+# seasonality stats downstream. Exact for every month except February: the daily
+# climatology folds Feb 29 onto DOY 59, so the per-year leap structure is not
+# recoverable and Feb differs by < ~1 % (immaterial to the seasonality CV classifier,
+# which also has the seas_eps deadband).
+.monthlyFromDaily <- function(daily, agg = c("mean", "sum")) {
+  agg   <- match.arg(agg)
+  ndays <- c(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)   # 365-day calendar
+  end   <- cumsum(ndays); start <- end - ndays + 1L
+  f     <- if (agg == "mean") mean else sum
+  vapply(seq_len(12L), function(m) f(daily[start[m]:end[m]]), numeric(1))
+}
+
 # Fast centred circular running mean of a single DOY-indexed daily cycle, via a
 # C-level cumsum (no R-level per-DOY loop -- unlike .circSmooth, which is written to
 # vectorise over the cell dimension of a [cells x ndays] matrix and is too slow to

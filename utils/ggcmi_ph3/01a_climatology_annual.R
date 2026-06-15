@@ -119,10 +119,9 @@ read_push <- function(ring, yr) {
     ps = read_year_cells(clm_file_list[["ps"]], yr), lat = land_lat)
 }
 
-# dppet is unused downstream (harvest recomputes the ratio from dprec/dpet) and is
-# zero in the sliding path, so it is dropped before writing to save ~1/4 of the size.
+# The ring serves only the daily climatology (dtemp/dprec/dpet); the monthly
+# seasonality stats are reconstructed downstream in calcCropCalendars (01b).
 save_clim <- function(yr, clim) {
-  clim$dppet <- NULL
   fn <- file.path(clim_dir, sprintf("climatology_%s_%s_%d.Rdata", gcm, scen, yr))
   save(clim, grid_clm, gcm, scen, yr, W, file = fn, compress = FALSE)
 }

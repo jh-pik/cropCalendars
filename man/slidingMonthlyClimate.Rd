@@ -40,9 +40,10 @@ of forcings, exactly as passed to \code{addYearMonthlyClimate}.}
 climatologies, forwarded to \code{finalizeMonthlyClimate} (0/1 = off).}
 }
 \value{
-`initClimateRing` returns a ring; `ringClimatology` returns the same
-  list of fields as `finalizeMonthlyClimate` (mtemp, mprec, mpet, mppet,
-  mppet_diff, dtemp, dppet, dprec, dpet); `dppet` is left at zero (unused).
+`initClimateRing` returns a ring; `ringClimatology` returns the daily
+  climatology only (`dtemp`, `dprec`, `dpet`) -- the ring accumulates only the
+  daily fields, and the monthly seasonality stats are reconstructed from these
+  downstream (see \code{calcCropCalendars}).
 }
 \description{
 Maintains a running \code{window}-year climatology that can be
