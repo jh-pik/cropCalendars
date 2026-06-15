@@ -15,10 +15,10 @@ calcDoyWetMonth(
 \arguments{
 \item{daily_prec}{Numeric vector of length 365. Climatological daily
 precipitation (mm), one value per DOY averaged across the reference period
-(the \code{dprec} element from \code{calcMonthlyClimate}).}
+(the \code{dprec} element from \code{calcClimatology}).}
 
 \item{daily_pet}{Numeric vector of length 365. Climatological daily PET (mm),
-one value per DOY (the \code{dpet} element from \code{calcMonthlyClimate}).}
+one value per DOY (the \code{dpet} element from \code{calcClimatology}).}
 
 \item{prev_doy}{Integer DOY (1–365) of the wettest-window start chosen for the
 \emph{previous} year, or \code{NA} (the default) for no prior state. Used

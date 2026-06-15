@@ -37,7 +37,7 @@ calcPET <- function(temp,
     Rnl   <- (lwdown - sigma * (temp + 273.15)^4) * 86400
     Rn    <- Rns + Rnl
     # pmax() drops the matrix dim, which breaks the cell-vectorised callers
-    # (.petDaily -> addYearMonthlyClimate indexes pet[, dom]); restore it, as
+    # (.petDaily -> addYearClimate indexes pet[, dom]); restore it, as
     # calcPET_FAO56 does. pmax is NA-safe.
     eeq   <- pmax(0, s / (s + gamma_t) / lambda * Rn)
     if (!is.null(dim(Rn))) dim(eeq) <- dim(Rn)

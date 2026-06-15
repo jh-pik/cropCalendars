@@ -10,7 +10,7 @@ calcDoyCrossThreshold(daily_value, threshold, min_duration = 1L, from = 1L)
 \item{daily_value}{Numeric vector of length 365. Climatological daily
 values of the variable (e.g. temperature), one per DOY, averaged across
 the reference period. Typically the \code{dtemp} element returned by
-\code{calcMonthlyClimate}.}
+\code{calcClimatology}.}
 
 \item{threshold}{Numeric. Threshold value for crossing detection.}
 

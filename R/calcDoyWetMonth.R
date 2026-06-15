@@ -15,9 +15,9 @@
 #'
 #' @param daily_prec Numeric vector of length 365. Climatological daily
 #'   precipitation (mm), one value per DOY averaged across the reference period
-#'   (the \code{dprec} element from \code{calcMonthlyClimate}).
+#'   (the \code{dprec} element from \code{calcClimatology}).
 #' @param daily_pet Numeric vector of length 365. Climatological daily PET (mm),
-#'   one value per DOY (the \code{dpet} element from \code{calcMonthlyClimate}).
+#'   one value per DOY (the \code{dpet} element from \code{calcClimatology}).
 #' @param prev_doy Integer DOY (1–365) of the wettest-window start chosen for the
 #'   \emph{previous} year, or \code{NA} (the default) for no prior state. Used
 #'   only when \code{eps > 0} to apply temporal hysteresis (see \code{eps}).

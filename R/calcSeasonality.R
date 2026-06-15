@@ -29,7 +29,7 @@
 #'   test when \code{seas_eps > 0} (default 1). A relative \code{seas_eps} is not
 #'   meaningful on a temperature threshold, so an absolute margin is used there.
 #' @param daily_temp Numeric vector of length 365, the climatological daily mean
-#'   temperature (the \code{dtemp} element from \code{calcMonthlyClimate}). When
+#'   temperature (the \code{dtemp} element from \code{calcClimatology}). When
 #'   supplied, the coldest-month test uses the coldest 30-day window mean of this
 #'   series instead of \code{min(monthly_temp)} (continuous, no month-boundary
 #'   quantisation). The CV classifiers stay on the 12 monthly values -- a daily CV

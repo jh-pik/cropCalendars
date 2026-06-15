@@ -30,24 +30,24 @@ calcSowingDate.}
 \item{monthly_temp}{numeric vector of length 12. Mean monthly air temperature
 (degree Celsius).}
 
-\item{monthly_ppet}{numeric vestor of length 12. Mean Potential Evapotranspiration (mm). See caclMonthlyClimate.}
+\item{monthly_ppet}{numeric vestor of length 12. Mean Potential Evapotranspiration (mm). See calcClimatology.}
 
 \item{monthly_ppet_diff}{numeric vestor of length 12. Mean difference of
-Potential Evapotranspiration (mm). See caclMonthlyClimate.}
+Potential Evapotranspiration (mm). See calcClimatology.}
 
 \item{daily_temp}{numeric vector of length 365. Climatological daily mean
 temperature (deg C), one value per DOY (the \code{dtemp} element from
-\code{calcMonthlyClimate}). If \code{NULL}, it is interpolated from
+\code{calcClimatology}). If \code{NULL}, it is interpolated from
 \code{monthly_temp}.}
 
 \item{daily_prec}{numeric vector of length 365. Climatological daily
 precipitation (mm) per DOY (the \code{dprec} element from
-\code{calcMonthlyClimate}). Used with \code{daily_pet} to form the spike-free
+\code{calcClimatology}). Used with \code{daily_pet} to form the spike-free
 daily P/PET (ratio of per-DOY means) for the wet-season-end crossing. If
 \code{NULL}, the daily P/PET is interpolated from \code{monthly_ppet} instead.}
 
 \item{daily_pet}{numeric vector of length 365. Climatological daily PET (mm)
-per DOY (the \code{dpet} element from \code{calcMonthlyClimate}).}
+per DOY (the \code{dpet} element from \code{calcClimatology}).}
 
 \item{cross_min_duration}{integer minimum sustained-excursion length (days)
 forwarded to \code{calcDoyCrossThreshold} for the wet-season-end and
@@ -76,5 +76,5 @@ the resulting harvest dates flip by ~30 days between climate windows (e.g.
 when the warmest month alternates between July and August).
 }
 \seealso{
-getCropParam, calcMonthlyClimate, calcSowingDate, calcCropCalendars
+getCropParam, calcClimatology, calcSowingDate, calcCropCalendars
 }

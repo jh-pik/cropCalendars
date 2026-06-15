@@ -23,7 +23,7 @@
 #' @param hd_vector vector of possible harvest dates as calculated by
 #' calcHarvestDateVector
 #' @param daily_temp Numeric vector of length 365, the climatological daily mean
-#' temperature (\code{dtemp} from \code{calcMonthlyClimate}). When supplied, the
+#' temperature (\code{dtemp} from \code{calcClimatology}). When supplied, the
 #' "too cold to grow" guards use the warmest 30-day window mean instead of
 #' \code{max(monthly_temp)} (continuous; consistent with \code{calcHarvestRule}).
 #' \code{NULL} (default) uses the monthly maximum.

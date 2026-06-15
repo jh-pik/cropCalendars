@@ -8,7 +8,7 @@
 #' @param daily_value Numeric vector of length 365. Climatological daily
 #'   values of the variable (e.g. temperature), one per DOY, averaged across
 #'   the reference period. Typically the \code{dtemp} element returned by
-#'   \code{calcMonthlyClimate}.
+#'   \code{calcClimatology}.
 #' @param threshold Numeric. Threshold value for crossing detection.
 #' @param min_duration Integer >= 1. Minimum number of consecutive days the
 #'   excursion must persist for a crossing to count (a "sustained-excursion"

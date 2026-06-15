@@ -26,7 +26,7 @@ calcCropCalendars(
 
 \item{lat}{Latitude (decimal degrees)}
 
-\item{mclimate}{Monthly climate. A list returned by the calcMonthlyClimate()
+\item{mclimate}{Monthly climate. A list returned by the calcClimatology()
 function.}
 
 \item{crop}{A crop name (chr), among those specified in the croppar_file}
@@ -83,5 +83,5 @@ Wrapper function calling sub-functions to
 calculate sowing and harvest dates.
 }
 \seealso{
-calcMonthlyClimate
+calcClimatology
 }

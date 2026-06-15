@@ -40,7 +40,7 @@
 #'   24 h fluxes and requires no geometric daylength.
 #' @param smooth_window Integer odd day-window for circularly smoothing the daily
 #'   climatologies (\code{dtemp}, \code{dprec}, \code{dpet}), forwarded to
-#'   \code{finalizeMonthlyClimate}. 0/1 (default) = no smoothing.
+#'   \code{finalizeClimate}. 0/1 (default) = no smoothing.
 #'
 #' @return list with five monthly vectors (length 12) and two daily vectors
 #' (length 365):
@@ -59,11 +59,11 @@
 #' d_temp <- matrix(rnorm(365*3, 15), nrow = 3)
 #' d_prec <- matrix(rnorm(365*3, 3, 50), nrow = 3)
 #' d_prec[d_prec <= 0] <- 0
-#' calcMonthlyClimate(lat = 45, temp = d_temp, prec = d_prec,
+#' calcClimatology(lat = 45, temp = d_temp, prec = d_prec,
 #'                    syear = 2001, eyear = 2003)
 #' @export
 
-calcMonthlyClimate <- function(lat        = NULL,
+calcClimatology <- function(lat        = NULL,
                                temp       = NULL,
                                prec       = NULL,
                                syear      = NULL,
@@ -89,7 +89,7 @@ calcMonthlyClimate <- function(lat        = NULL,
   }
 
   # Accumulate the monthly climate one year at a time via the shared, cell-vectorised
-  # engine (initMonthlyClimate / addYearMonthlyClimate / finalizeMonthlyClimate). This
+  # engine (initClimateAccum / addYearClimate / finalizeClimate). This
   # is a single grid cell, so the gridded pipeline (01a) and this per-pixel function
   # share one implementation of the aggregation, PET switch and DOY handling.
   if (incl_feb29) {
@@ -100,11 +100,11 @@ calcMonthlyClimate <- function(lat        = NULL,
   }
   yr <- date_to_year(dates)
 
-  acc <- initMonthlyClimate(ncells = 1L, pet_method = pet_method)
+  acc <- initClimateAccum(ncells = 1L, pet_method = pet_method)
   for (y in unique(yr)) {
     sel <- which(yr == y)
     sub <- function(x) if (is.null(x)) NULL else x[sel]
-    acc <- addYearMonthlyClimate(
+    acc <- addYearClimate(
       acc, temp = temp[sel], prec = prec[sel], dates = dates[sel],
       swdown = sub(swdown), lwdown = sub(lwdown),
       windspeed = sub(windspeed), humid = sub(humid),
@@ -113,7 +113,7 @@ calcMonthlyClimate <- function(lat        = NULL,
     )
   }
 
-  mclm <- finalizeMonthlyClimate(acc, smooth_window = smooth_window)
+  mclm <- finalizeClimate(acc, smooth_window = smooth_window)
   for (f in c("mtemp", "mprec", "mpet", "mppet", "mppet_diff")) {
     names(mclm[[f]]) <- seq_len(12)
   }

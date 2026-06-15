@@ -6,10 +6,10 @@
 #' each raw year only once.
 #'
 #' The per-year aggregation reuses the validated streaming engine: each pushed
-#' year is reduced to a one-year accumulator via \code{addYearMonthlyClimate}, and
+#' year is reduced to a one-year accumulator via \code{addYearClimate}, and
 #' the ring keeps the field-wise running sum of the last \code{window} of these
 #' (subtracting the year that falls out). \code{ringClimatology()} then calls
-#' \code{finalizeMonthlyClimate()} on that running sum, so its output is identical
+#' \code{finalizeClimate()} on that running sum, so its output is identical
 #' to building the same window from scratch (bit-identical before any slide;
 #' identical to ~1e-9 after, due to the add/subtract floating-point path — the
 #' resulting integer calendar dates are unaffected).
@@ -21,7 +21,7 @@
 #'   climatology only (`dtemp`, `dprec`, `dpet`) -- the ring accumulates only the
 #'   daily fields, and the monthly seasonality stats are reconstructed from these
 #'   downstream (see \code{calcCropCalendars}).
-#' @name slidingMonthlyClimate
+#' @name slidingClimate
 #' @export
 initClimateRing <- function(ncells, window, pet_method = c("fao56", "pt")) {
   pet_method <- match.arg(pet_method)
@@ -35,25 +35,25 @@ initClimateRing <- function(ncells, window, pet_method = c("fao56", "pt")) {
     # Running field-wise sum of the slots, as a zeroed daily_only engine accumulator:
     # the ring carries only the daily fields (no monthly sums, no dppet); the monthly
     # seasonality stats are reconstructed from the daily climatology downstream.
-    run        = initMonthlyClimate(ncells, pet_method, daily_only = TRUE)
+    run        = initClimateAccum(ncells, pet_method, daily_only = TRUE)
   )
 }
 
 # Daily fields summed across the ring (everything the daily_only finalize reads).
 .ringFields <- c("D_tsum", "D_prsum", "D_petsum", "D_cnt")
 
-#' @rdname slidingMonthlyClimate
+#' @rdname slidingClimate
 #' @param ring ring from \code{initClimateRing}.
 #' @param temp,prec,dates,swdown,lwdown,windspeed,humid,ps,lat one calendar year
-#'   of forcings, exactly as passed to \code{addYearMonthlyClimate}.
+#'   of forcings, exactly as passed to \code{addYearClimate}.
 #' @export
 pushClimateYear <- function(ring, temp, prec, dates,
                             swdown = NULL, lwdown = NULL, windspeed = NULL,
                             humid = NULL, ps = 101325, lat = NULL) {
   # One-year contribution, via the validated engine (single-year daily_only
   # accumulator: only the daily sums are accumulated and retained per slot).
-  slot <- addYearMonthlyClimate(
-    initMonthlyClimate(ring$ncells, ring$pet_method, daily_only = TRUE),
+  slot <- addYearClimate(
+    initClimateAccum(ring$ncells, ring$pet_method, daily_only = TRUE),
     temp = temp, prec = prec, dates = dates,
     swdown = swdown, lwdown = lwdown, windspeed = windspeed,
     humid = humid, ps = ps, lat = lat
@@ -75,11 +75,11 @@ pushClimateYear <- function(ring, temp, prec, dates,
   ring
 }
 
-#' @rdname slidingMonthlyClimate
+#' @rdname slidingClimate
 #' @param smooth_window Integer odd day-window for circularly smoothing the daily
-#'   climatologies, forwarded to \code{finalizeMonthlyClimate} (0/1 = off).
+#'   climatologies, forwarded to \code{finalizeClimate} (0/1 = off).
 #' @export
 ringClimatology <- function(ring, smooth_window = 0L) {
   if (ring$count == 0L) stop("Empty ring: push at least one year first.")
-  finalizeMonthlyClimate(ring$run, smooth_window = smooth_window)
+  finalizeClimate(ring$run, smooth_window = smooth_window)
 }

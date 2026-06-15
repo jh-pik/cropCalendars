@@ -7,17 +7,17 @@
 #' these monthly values if \code{daily_temp} is \code{NULL}.
 #' @param daily_prec Numeric vector of length 365. Climatological daily
 #' precipitation (mm, one value per DOY, averaged across years). The
-#' \code{dprec} element from \code{calcMonthlyClimate}. Used by
+#' \code{dprec} element from \code{calcClimatology}. Used by
 #' \code{calcDoyWetMonth} (with \code{daily_pet}) to find the start of the wet
 #' season as the wettest 120-day window (\eqn{\sum P / \sum PET}). Preferred input
 #' for the wettest-window start in PREC/PRECTEMP cells; if absent, the monthly
 #' fallback (\code{monthly_prec} / \code{monthly_pet}) is used instead.
 #' @param daily_pet Numeric vector of length 365. Climatological daily PET (mm,
-#' one value per DOY). The \code{dpet} element from \code{calcMonthlyClimate}.
+#' one value per DOY). The \code{dpet} element from \code{calcClimatology}.
 #' Paired with \code{daily_prec} (see there).
 #' @param daily_temp Numeric vector of length 365. Climatological daily mean
 #' temperature (°C), one value per DOY (the \code{dtemp} element from
-#' \code{calcMonthlyClimate}). Used for the coldest-month reductions (coldest
+#' \code{calcClimatology}). Used for the coldest-month reductions (coldest
 #' 30-day window mean and centre DOY) and by \code{calcDoyCrossThreshold} for the
 #' spring/fall threshold crossings. \code{NULL} falls back to the legacy monthly
 #' rule (calendar-month minimum and coldest-month mid-day) and interpolates the
@@ -42,7 +42,7 @@
 #' reductions or the 120-day wettest window.
 #' @param monthly_prec,monthly_pet Optional numeric vectors of length 12, the
 #' monthly precipitation and PET TOTALS (the \code{mprec} / \code{mpet} elements
-#' from \code{calcMonthlyClimate}). Used only as the bug-free monthly fallback for
+#' from \code{calcClimatology}). Used only as the bug-free monthly fallback for
 #' the wettest-window start in PREC/PRECTEMP cells, when
 #' \code{daily_prec}/\code{daily_pet} (and \code{wet_doy}) are not supplied: the
 #' wettest 4-month ratio-of-sums (\eqn{\sum P / \sum PET}). Coarser (~1-month

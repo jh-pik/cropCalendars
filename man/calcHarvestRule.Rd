@@ -14,7 +14,7 @@ calcHarvestRule(
 }
 \arguments{
 \item{daily_temp}{Numeric vector of length 365, the climatological daily mean
-temperature (\code{dtemp} from \code{calcMonthlyClimate}). When supplied, the
+temperature (\code{dtemp} from \code{calcClimatology}). When supplied, the
 warmest-month temperature uses the warmest 30-day window mean of this series
 instead of \code{max(monthly_temp)} (continuous, no month-boundary
 quantisation). \code{NULL} (default) uses the monthly maximum (backward compatible).}

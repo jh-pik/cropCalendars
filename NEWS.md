@@ -29,7 +29,7 @@
 
 ### Major
 - **Pipeline rebuilt from a 10-year-step scheme to an annual 30-yr sliding window**
-  (`R/slidingMonthlyClimate.R` ring buffer; calendars computed every year, smooth and
+  (`R/slidingClimate.R` ring buffer; calendars computed every year, smooth and
   rule-consistent, so the output moving average is dropped). Driver
   `utils/ggcmi_ph3/01_compute_annual_calendars.R` (single-pass) — or the split below.
   Future scenarios seed the ring from historical climate; opt-in seed cache (`SAVE_SEED`).
@@ -85,7 +85,7 @@
   descent produces a spurious "first" up-crossing ~130 days before the real spring
   crossing, and sub-1 °C differences between 30-yr windows flip which side wins (verified
   on GFDL-ESM4 cell 136.25/−33.25, S. Australia). Two fixes: (a)
-  `finalizeMonthlyClimate(smooth_window=)` applies a centred **circular running mean** to
+  `finalizeClimate(smooth_window=)` applies a centred **circular running mean** to
   the daily climatologies (config `clm_smooth_window`, default 15 d; threaded via
   `ringClimatology`); (b) `calcDoyCrossThreshold(min_duration=)` accepts a crossing only if
   the excursion **persists** that many days (config `cross_min_duration`, default 5;
@@ -123,11 +123,11 @@
   stays portable; the pipeline passes `SLURM_CPUS_PER_TASK`). Output is bit-identical
   (all 8 NetCDF variables, 0 diff vs the serial result).
 
-- **Cell-vectorised, streaming monthly-climate engine** (`initMonthlyClimate` /
-  `addYearMonthlyClimate` / `finalizeMonthlyClimate`, new `R/monthlyClimateAccum.R`).
+- **Cell-vectorised, streaming monthly-climate engine** (`initClimateAccum` /
+  `addYearClimate` / `finalizeClimate`, new `R/climateAccum.R`).
   Years are added one at a time, vectorised over an arbitrary number of grid cells, so the
   gridded pipeline can process the full grid one year at a time without the full multi-year
-  series in memory. `calcMonthlyClimate` is now a thin per-pixel wrapper over this engine, so
+  series in memory. `calcClimatology` is now a thin per-pixel wrapper over this engine, so
   the aggregation, PET-method switch, P/PET flooring and leap-year DOY handling live in one
   place (previously duplicated in the pipeline). Output is unchanged (verified bit-identical
   to the previous gridded results); monthly-vector names retained.
@@ -158,7 +158,7 @@
   and replace deprecated `aes_string`/`size` with `aes(.data[[…]])`/`linewidth`. `scales` and
   `RColorBrewer` added to Suggests.
 
-- **`calcMonthlyClimate`**: floor the monthly P/PET (`mppet`) denominator with
+- **`calcClimatology`**: floor the monthly P/PET (`mppet`) denominator with
   `pmax(mpet_y, 1e-6)`, mirroring the daily `dppet`. FAO-56 PET can be clamped to 0 in deep
   cold; a month with zero PET (and, with zero precipitation, `0/0`) produced `Inf`/`NaN` in
   `mppet`, which propagated to high-latitude cells and crashed downstream rules
@@ -173,7 +173,7 @@
   Feb day-of-year by one in leap years). Changed to `doy1 > 59` ("after Feb. 28", whose
   day-of-year is 59) so Feb. 29 folds onto DOY 59 (shared with Feb. 28) and Mar. 1–Dec. 31 stay
   aligned with non-leap years. This shifts the daily temperature / P-PET climatologies
-  (`dtemp`/`dppet` from `calcMonthlyClimate`) in leap years and hence some sowing /
+  (`dtemp`/`dppet` from `calcClimatology`) in leap years and hence some sowing /
   threshold-crossing dates.
 
 - **`calcDoyWetMonth`**: rewrote to operate on a 365-value daily P/PET climatology
@@ -215,7 +215,7 @@
   (`rlds`), and surface pressure (`ps`, default 101325 Pa). Aerodynamic resistance
   follows LPJmL `getpet.c` (grass reference crop, `rs = 70 s/m`).
 
-- **`calcMonthlyClimate`**: added `pet_method` argument (`"pt"` or `"fao56"`). When
+- **`calcClimatology`**: added `pet_method` argument (`"pt"` or `"fao56"`). When
   `pet_method = "fao56"`, passes `sfcwind`, `huss`, `swdown`, `lwdown`, `ps` to
   `calcPET_FAO56` in a single vectorized call. Returns two new list elements `dtemp`
   and `dppet`: 365-value daily climatologies (mean temperature and P/PET ratio by DOY,
@@ -228,7 +228,7 @@
 
 - **`01_calc_crop_calendars.R`** (pipeline script): extended to read five additional
   ISIMIP3b climate variables (`rsds`, `rlds`, `huss`, `sfcwind`, `ps`) and pass them
-  to `calcMonthlyClimate(pet_method = "fao56")`. Memory use optimised: replaced
+  to `calcClimatology(pet_method = "fao56")`. Memory use optimised: replaced
   sequential `abind` calls (O(n) copies) with list accumulation and a single
   `do.call(abind, ...)`, pre-allocated output list to avoid O(n²) `rbind` growth,
   reduced progress printing from every pixel to every 500th.

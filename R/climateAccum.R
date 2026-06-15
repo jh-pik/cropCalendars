@@ -5,7 +5,7 @@
 #' the full multi-year daily series in memory at once. Years are added one at a
 #' time; each call is vectorised over an arbitrary number of grid cells.
 #'
-#' `calcMonthlyClimate()` is a thin per-pixel wrapper around these; the gridded
+#' `calcClimatology()` is a thin per-pixel wrapper around these; the gridded
 #' pipeline (utils/ggcmi_ph3/01a) feeds the full grid one year at a time. Both share
 #' this single implementation so the aggregation, the PET method switch, the P/PET
 #' flooring and the leap-year DOY handling live in exactly one place.
@@ -27,14 +27,14 @@
 #'   P/PET sum (\code{dppet}) are neither allocated nor computed. Used by the sliding
 #'   ring, whose only consumer reconstructs the monthly seasonality stats from the
 #'   daily climatology downstream. Default \code{FALSE} = the full output.
-#' @return `initMonthlyClimate` returns an accumulator (a list of zeroed matrices);
-#'   `finalizeMonthlyClimate` returns the climate as a list of fields (vectors when
+#' @return `initClimateAccum` returns an accumulator (a list of zeroed matrices);
+#'   `finalizeClimate` returns the climate as a list of fields (vectors when
 #'   `ncells == 1`, otherwise `[ncells x 12]` / `[ncells x 365]` matrices): the full
-#'   nine fields matching `calcMonthlyClimate()`, or only `dtemp`/`dprec`/`dpet` when
+#'   nine fields matching `calcClimatology()`, or only `dtemp`/`dprec`/`dpet` when
 #'   the accumulator was built with `daily_only = TRUE`.
-#' @name monthlyClimateAccum
+#' @name climateAccum
 #' @export
-initMonthlyClimate <- function(ncells, pet_method = c("fao56", "pt"),
+initClimateAccum <- function(ncells, pet_method = c("fao56", "pt"),
                                daily_only = FALSE) {
   pet_method <- match.arg(pet_method)
   acc <- list(
@@ -47,7 +47,7 @@ initMonthlyClimate <- function(ncells, pet_method = c("fao56", "pt"),
     daily_only = daily_only
   )
   # The monthly accumulators (mtemp/mprec/mpet/mppet) and the daily P/PET sum (dppet)
-  # are only needed for the per-pixel calcMonthlyClimate() full output. The sliding
+  # are only needed for the per-pixel calcClimatology() full output. The sliding
   # ring runs daily_only -- it accumulates only the daily fields, and the seasonality
   # monthly stats are reconstructed from the daily climatology downstream -- which
   # also trims the ring's per-slot footprint.
@@ -75,16 +75,16 @@ initMonthlyClimate <- function(ncells, pet_method = c("fao56", "pt"),
   matrix(mapply(calcPET, temp = temp[1, ], lat = lat, day = day), nrow = 1L)
 }
 
-#' @rdname monthlyClimateAccum
-#' @param acc accumulator from \code{initMonthlyClimate}.
+#' @rdname climateAccum
+#' @param acc accumulator from \code{initClimateAccum}.
 #' @param temp,prec daily mean temperature (deg C) and precipitation (mm) for one
 #'   calendar year: a vector (single cell) or an \code{[ncells x ndays]} matrix.
 #' @param dates character vector of the year's dates ("YYYY-MM-DD"), length ndays.
 #' @param swdown,lwdown,windspeed,humid,ps daily forcings matching \code{temp}'s
-#'   shape (see \code{calcMonthlyClimate}); \code{ps} may be scalar.
+#'   shape (see \code{calcClimatology}); \code{ps} may be scalar.
 #' @param lat latitude(s); only used by the Priestley-Taylor orbital fallback.
 #' @export
-addYearMonthlyClimate <- function(acc, temp, prec, dates,
+addYearClimate <- function(acc, temp, prec, dates,
                                   swdown = NULL, lwdown = NULL, windspeed = NULL,
                                   humid = NULL, ps = 101325, lat = NULL) {
   as_mat <- function(x) if (is.null(x) || !is.null(dim(x))) x else matrix(x, nrow = 1L)
@@ -124,7 +124,7 @@ addYearMonthlyClimate <- function(acc, temp, prec, dates,
   acc
 }
 
-#' @rdname monthlyClimateAccum
+#' @rdname climateAccum
 #' @param smooth_window Integer odd day-window for circularly smoothing the daily
 #'   climatologies (\code{dtemp}, \code{dprec}, \code{dpet}) before they are
 #'   returned. \code{0}/\code{1} (default) = no smoothing. Larger values apply a
@@ -135,7 +135,7 @@ addYearMonthlyClimate <- function(acc, temp, prec, dates,
 #'   120-day wettest-window argmax is essentially unaffected (it already
 #'   integrates over 120 days).
 #' @export
-finalizeMonthlyClimate <- function(acc, smooth_window = 0L) {
+finalizeClimate <- function(acc, smooth_window = 0L) {
   if (acc$nyears == 0L) stop("No years accumulated.")
   dtemp <- sweep(acc$D_tsum,   2, acc$D_cnt, "/")
   dprec <- sweep(acc$D_prsum,  2, acc$D_cnt, "/")

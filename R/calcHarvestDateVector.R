@@ -23,20 +23,20 @@
 #' calcSowingDate.
 #' @param monthly_temp numeric vector of length 12. Mean monthly air temperature
 #' (degree Celsius).
-#' @param monthly_ppet numeric vestor of length 12. Mean Potential Evapotranspiration (mm). See caclMonthlyClimate.
+#' @param monthly_ppet numeric vestor of length 12. Mean Potential Evapotranspiration (mm). See calcClimatology.
 #' @param monthly_ppet_diff numeric vestor of length 12. Mean difference of
-#' Potential Evapotranspiration (mm). See caclMonthlyClimate.
+#' Potential Evapotranspiration (mm). See calcClimatology.
 #' @param daily_temp numeric vector of length 365. Climatological daily mean
 #' temperature (deg C), one value per DOY (the \code{dtemp} element from
-#' \code{calcMonthlyClimate}). If \code{NULL}, it is interpolated from
+#' \code{calcClimatology}). If \code{NULL}, it is interpolated from
 #' \code{monthly_temp}.
 #' @param daily_prec numeric vector of length 365. Climatological daily
 #' precipitation (mm) per DOY (the \code{dprec} element from
-#' \code{calcMonthlyClimate}). Used with \code{daily_pet} to form the spike-free
+#' \code{calcClimatology}). Used with \code{daily_pet} to form the spike-free
 #' daily P/PET (ratio of per-DOY means) for the wet-season-end crossing. If
 #' \code{NULL}, the daily P/PET is interpolated from \code{monthly_ppet} instead.
 #' @param daily_pet numeric vector of length 365. Climatological daily PET (mm)
-#' per DOY (the \code{dpet} element from \code{calcMonthlyClimate}).
+#' per DOY (the \code{dpet} element from \code{calcClimatology}).
 #' @param cross_min_duration integer minimum sustained-excursion length (days)
 #' forwarded to \code{calcDoyCrossThreshold} for the wet-season-end and
 #' hot-day crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.
@@ -45,7 +45,7 @@
 #' \code{daily_pet} before the wet-season-end P/PET ratio. Default \code{0} = off.
 #' The reductions (\code{warmest_day}, driest-month P/PET) use the raw series.
 #'
-#' @seealso getCropParam, calcMonthlyClimate, calcSowingDate, calcCropCalendars
+#' @seealso getCropParam, calcClimatology, calcSowingDate, calcCropCalendars
 #' @export
 calcHarvestDateVector <- function(croppar,
                                   sowing_date,

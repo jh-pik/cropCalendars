@@ -4,7 +4,7 @@
 #' calculate sowing and harvest dates.
 #' @param lon Longitude (decimal degrees)
 #' @param lat Latitude (decimal degrees)
-#' @param mclimate Monthly climate. A list returned by the calcMonthlyClimate()
+#' @param mclimate Monthly climate. A list returned by the calcClimatology()
 #' function.
 #' @param crop A crop name (chr), among those specified in the croppar_file
 #' @param croppar_file Crop parameter file. If not specified, the default one is
@@ -44,7 +44,7 @@
 #' @param seas_mtemp_margin Absolute min-temperature deadband (deg C) forwarded to
 #' \code{calcSeasonality} as \code{mtemp_margin} (default 1; only used when
 #' \code{seas_eps > 0}).
-#' @seealso calcMonthlyClimate
+#' @seealso calcClimatology
 #' @export
 
 calcCropCalendars <- function(lon                   = NULL,
@@ -78,7 +78,7 @@ calcCropCalendars <- function(lon                   = NULL,
   # Get weather data of the grid cell. The sliding-window ring serves only the daily
   # climatology, so the monthly temperature/precipitation used by the seasonality CV
   # classifier are reconstructed from the daily series when absent (per-pixel
-  # calcMonthlyClimate still supplies them directly). The monthly P/PET fields are
+  # calcClimatology still supplies them directly). The monthly P/PET fields are
   # only the harvest-rule monthly FALLBACK inputs -- never used when the daily series
   # are present -- so they stay NULL on the ring path.
   dtemp      <- mclimate$dtemp
