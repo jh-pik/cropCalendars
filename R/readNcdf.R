@@ -69,7 +69,8 @@ readNcdf <- function(file_name  = NULL,
     dimnames(nc) <- dim_list
 
   } else {
-    warning("Reading a subset of data.")
+    # (subsetting is the normal path — no warning; the entire-dataset read above
+    # keeps its warning since that one can be an accidental large read)
 
     # Get dimensions subset
     idim_list <- dim_list_sub <- list()

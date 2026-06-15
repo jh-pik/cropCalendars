@@ -157,9 +157,10 @@ if (length(blk) > 0) { t0 <- Sys.time()
 
 # Slide: push year P, ring then serves T = P+1. Stop once past the last needed year.
 if (last_needed - 1L >= serve_hi) for (P in serve_hi:(last_needed - 1L)) {
+  t0 <- Sys.time()                       # time the whole iteration, incl. the climate read
   ring <- read_push(ring, P)
   Tn <- P + 1L
-  if (Tn %in% years_write) { t0 <- Sys.time()
+  if (Tn %in% years_write) {
     save_clim(Tn, ringClimatology(ring))
     cat(sprintf("  year %d: %.1fs  (rss %.1f GB)\n", Tn, as.numeric(Sys.time() - t0, units = "secs"),
                 as.numeric(gc()[2, 2]) / 1024)) }
