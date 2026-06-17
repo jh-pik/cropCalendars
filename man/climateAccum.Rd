@@ -22,7 +22,7 @@ addYearClimate(
   lat = NULL
 )
 
-finalizeClimate(acc, smooth_window = 0L)
+finalizeClimate(acc)
 }
 \arguments{
 \item{ncells}{number of grid cells the accumulator covers.}
@@ -47,16 +47,6 @@ calendar year: a vector (single cell) or an \code{[ncells x ndays]} matrix.}
 shape (see \code{calcClimatology}); \code{ps} may be scalar.}
 
 \item{lat}{latitude(s); only used by the Priestley-Taylor orbital fallback.}
-
-\item{smooth_window}{Integer odd day-window for circularly smoothing the daily
-climatologies (\code{dtemp}, \code{dprec}, \code{dpet}) before they are
-returned. \code{0}/\code{1} (default) = no smoothing. Larger values apply a
-centred circular running mean that removes the sub-window day-to-day jitter
-in the per-DOY means, which otherwise makes \code{calcDoyCrossThreshold}
-register spurious 1-day crossings (see that function and the wet-season-end
-harvest rule, which consume the daily series through point detectors). The
-120-day wettest-window argmax is essentially unaffected (it already
-integrates over 120 days).}
 }
 \value{
 `initClimateAccum` returns an accumulator (a list of zeroed matrices);

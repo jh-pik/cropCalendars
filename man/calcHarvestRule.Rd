@@ -11,8 +11,8 @@ calcHarvestRule(
   seasonality,
   daily_temp = NULL,
   prev_tclass = NA_integer_,
-  harv_eps = 0,
-  harv_tmax_margin = 1
+  harv_tmax_margin = 0,
+  smooth_window = 31L
 )
 }
 \arguments{
@@ -23,19 +23,18 @@ instead of \code{max(monthly_temp)} (continuous, no month-boundary
 quantisation). \code{NULL} (default) uses the monthly maximum (backward compatible).}
 
 \item{prev_tclass}{Integer thermal class chosen last year (0 = t-low, 1 = t-mid,
-2 = t-high), or \code{NA} (default). Used only when \code{harv_eps > 0} to apply
-a deadband on the base/optimum temperature thresholds (see \code{harv_eps}).}
+2 = t-high), or \code{NA} (default). Used only when \code{harv_tmax_margin > 0}
+to apply a deadband on the base/optimum temperature thresholds.}
 
-\item{harv_eps}{Non-negative numeric (default 0 = off). Master switch for the
-harvest-rule hysteresis: with a prior class, the \code{temp_base_rphase} /
-\code{temp_opt_rphase} thresholds are relaxed toward keeping last year's thermal
-class (thermostat deadband, absolute \code{harv_tmax_margin} deg C), so a
-sub-degree \code{temp_max} wobble between sliding windows no longer flips the
-harvest rule -- and hence the whole harvest formula. Mirrors \code{seas_eps}.}
+\item{harv_tmax_margin}{Absolute deadband (deg C, default 0 = off) on the
+\code{temp_base_rphase} / \code{temp_opt_rphase} thresholds: with a prior class,
+each threshold is relaxed toward keeping last year's thermal class (thermostat),
+so a sub-degree \code{temp_max} wobble between sliding windows no longer flips the
+harvest rule -- and hence the whole harvest formula. Mirrors \code{seas_mtemp_margin}.}
 
-\item{harv_tmax_margin}{Absolute deadband (deg C) on the base/optimum temperature
-thresholds when \code{harv_eps > 0} (default 1; a relative \code{harv_eps} is not
-meaningful on thresholds that can be near 0).}
+\item{smooth_window}{Integer day-window for the daily-climatology reductions (here the
+warmest-window mean driving the thermal class); the single global smoothing window
+(default 31). See \code{calcCropCalendars}.}
 }
 \description{
 This function performs an agro-climatic classification of

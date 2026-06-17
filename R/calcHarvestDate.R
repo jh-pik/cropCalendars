@@ -27,6 +27,9 @@
 #' "too cold to grow" guards use the warmest 30-day window mean instead of
 #' \code{max(monthly_temp)} (continuous; consistent with \code{calcHarvestRule}).
 #' \code{NULL} (default) uses the monthly maximum.
+#' @param smooth_window Integer day-window for the daily-climatology reductions (here the
+#' warmest-window mean used by the too-cold guards); the single global smoothing window
+#' (default 31). See \code{calcCropCalendars}.
 #' @export
 
 calcHarvestDate <- function(croppar,
@@ -37,7 +40,8 @@ calcHarvestDate <- function(croppar,
                             seasonality,
                             harvest_rule,
                             hd_vector,
-                            daily_temp = NULL
+                            daily_temp = NULL,
+                            smooth_window = 31L
                             ) {
 
   # Extract individual parameter names and values
@@ -48,7 +52,7 @@ calcHarvestDate <- function(croppar,
   # Warmest-month temperature for the "too cold to grow" guards below: daily
   # warmest-30-day-window mean when the daily climatology is supplied, else the
   # calendar-month maximum (continuous; consistent with calcHarvestRule).
-  warmest_t <- if (!is.null(daily_temp)) .warmestWindowMean(daily_temp) else max(monthly_temp)
+  warmest_t <- if (!is.null(daily_temp)) .warmestWindowMean(daily_temp, width = smooth_window) else max(monthly_temp)
 
   # Extract individual individual values from hd_vector
   for (i in names(hd_vector)) {

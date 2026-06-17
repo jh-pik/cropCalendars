@@ -35,11 +35,16 @@ ncores <- if (length(args) >= 3) as.integer(args[3]) else
 if (!exists("wet_window_eps"))        wet_window_eps        <- 0
 if (!exists("wet_window_decay"))      wet_window_decay      <- 0.3
 if (!exists("cross_min_duration"))    cross_min_duration    <- 1L
-if (!exists("cross_smooth_window"))   cross_smooth_window   <- 0L
+if (!exists("smooth_window"))         smooth_window         <- 31L
 if (!exists("seas_eps"))              seas_eps              <- 0
 if (!exists("seas_mtemp_margin"))     seas_mtemp_margin     <- 1
-if (!exists("harv_eps"))              harv_eps              <- 0
-if (!exists("harv_tmax_margin"))      harv_tmax_margin      <- 1
+if (!exists("harv_ppet_eps"))         harv_ppet_eps         <- 0
+if (!exists("harv_exist_eps"))        harv_exist_eps        <- 0
+if (!exists("harv_tmax_margin"))      harv_tmax_margin      <- 0
+
+# Directional wet-end EXISTENCE deadband (harv_exist_eps on the ppet_ratio doy_wet1 crossing)
+# lives on the gated cc_regime code path; enable it iff the knob is on.
+options(cc_regime = (harv_exist_eps > 0))
 
 parse_years <- function(s) {
   if (is.null(s) || s == "") return(NULL)
@@ -50,8 +55,17 @@ parse_years <- function(s) {
 }
 years_env <- parse_years(Sys.getenv("YEARS", ""))
 
+# Optional env overrides for A/B validation: HARV_EXIST_EPS forces the existence-deadband
+# knob (and re-derives cc_regime); OUT_SUFFIX writes to a sibling output dir so a baseline
+# run does not clobber the production GCM dir.
+if (Sys.getenv("HARV_EXIST_EPS") != "") {
+  harv_exist_eps <- as.numeric(Sys.getenv("HARV_EXIST_EPS"))
+  options(cc_regime = (harv_exist_eps > 0))
+}
+out_suffix <- Sys.getenv("OUT_SUFFIX", "")
+
 clim_dir <- paste0(output_dir, "/crop_calendars/annual_climatology/", scen, "/", gcm, "/")
-out_dir  <- paste0(output_dir, "/crop_calendars/annual/", scen, "/", gcm, "/")
+out_dir  <- paste0(output_dir, "/crop_calendars/annual/", scen, "/", gcm, out_suffix, "/")
 if (!dir.exists(clim_dir)) stop("No climatology dir (run 01a first): ", clim_dir)
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 
@@ -63,8 +77,8 @@ if (!is.null(years_env)) { keep <- cyears %in% years_env; cfiles <- cfiles[keep]
 if (length(cyears) == 0) stop("No climatology files match (run 01a; check YEARS).")
 emit_years <- cyears
 nE <- length(emit_years)
-cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d cross_smooth=%d seas_eps=%g harv_eps=%g harv_tmax_margin=%g\n",
-            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, cross_smooth_window, seas_eps, harv_eps, harv_tmax_margin))
+cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d smooth_window=%d seas_eps=%g harv_ppet_eps=%g harv_exist_eps=%g harv_tmax_margin=%g\n",
+            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, smooth_window, seas_eps, harv_ppet_eps, harv_exist_eps, harv_tmax_margin))
 
 # Crops + pre-extracted parameters. CROPS env (rb_cal names, comma-separated, e.g.
 # "Maize") restricts the crop set for fast dev/validation runs (default: all).
@@ -97,10 +111,11 @@ computeYear <- function(clim, prev_wet, prev_seas, prev_harv) {
                              prev_wet_doy = prev_wet[j], wet_window_eps = wet_window_eps,
                              wet_window_decay = wet_window_decay,
                              cross_min_duration = cross_min_duration,
-                             cross_smooth_window = cross_smooth_window,
+                             smooth_window = smooth_window,
                              prev_seas = prev_seas[j], seas_eps = seas_eps,
                              seas_mtemp_margin = seas_mtemp_margin,
-                             prev_harv = prev_harv[j, ci], harv_eps = harv_eps,
+                             prev_harv = prev_harv[j, ci], harv_ppet_eps = harv_ppet_eps,
+                             harv_exist_eps = harv_exist_eps,
                              harv_tmax_margin = harv_tmax_margin)
       if (ci == 1L) { wd <- attr(r, "wet_doy"); st <- attr(r, "seas_type") }
       hv[ci] <- attr(r, "harv_state")   # crop-DEPENDENT harvest hysteresis state

@@ -19,17 +19,16 @@
 #'   instead of \code{max(monthly_temp)} (continuous, no month-boundary
 #'   quantisation). \code{NULL} (default) uses the monthly maximum (backward compatible).
 #' @param prev_tclass Integer thermal class chosen last year (0 = t-low, 1 = t-mid,
-#'   2 = t-high), or \code{NA} (default). Used only when \code{harv_eps > 0} to apply
-#'   a deadband on the base/optimum temperature thresholds (see \code{harv_eps}).
-#' @param harv_eps Non-negative numeric (default 0 = off). Master switch for the
-#'   harvest-rule hysteresis: with a prior class, the \code{temp_base_rphase} /
-#'   \code{temp_opt_rphase} thresholds are relaxed toward keeping last year's thermal
-#'   class (thermostat deadband, absolute \code{harv_tmax_margin} deg C), so a
-#'   sub-degree \code{temp_max} wobble between sliding windows no longer flips the
-#'   harvest rule -- and hence the whole harvest formula. Mirrors \code{seas_eps}.
-#' @param harv_tmax_margin Absolute deadband (deg C) on the base/optimum temperature
-#'   thresholds when \code{harv_eps > 0} (default 1; a relative \code{harv_eps} is not
-#'   meaningful on thresholds that can be near 0).
+#'   2 = t-high), or \code{NA} (default). Used only when \code{harv_tmax_margin > 0}
+#'   to apply a deadband on the base/optimum temperature thresholds.
+#' @param harv_tmax_margin Absolute deadband (deg C, default 0 = off) on the
+#'   \code{temp_base_rphase} / \code{temp_opt_rphase} thresholds: with a prior class,
+#'   each threshold is relaxed toward keeping last year's thermal class (thermostat),
+#'   so a sub-degree \code{temp_max} wobble between sliding windows no longer flips the
+#'   harvest rule -- and hence the whole harvest formula. Mirrors \code{seas_mtemp_margin}.
+#' @param smooth_window Integer day-window for the daily-climatology reductions (here the
+#'   warmest-window mean driving the thermal class); the single global smoothing window
+#'   (default 31). See \code{calcCropCalendars}.
 #' @export
 calcHarvestRule <- function(croppar,
                             monthly_temp,
@@ -37,8 +36,8 @@ calcHarvestRule <- function(croppar,
                             seasonality,
                             daily_temp       = NULL,
                             prev_tclass      = NA_integer_,
-                            harv_eps         = 0,
-                            harv_tmax_margin = 1
+                            harv_tmax_margin = 0,
+                            smooth_window    = 31L
                             ) {
 
   # extract individual parameter names and values
@@ -47,17 +46,17 @@ calcHarvestRule <- function(croppar,
   # Warmest-month temperature driving the t-low/-mid/-high split: daily
   # warmest-30-day-window mean when the daily climatology is supplied, else the
   # calendar-month maximum.
-  temp_max <- if (!is.null(daily_temp)) .warmestWindowMean(daily_temp) else max(monthly_temp)
+  temp_max <- if (!is.null(daily_temp)) .warmestWindowMean(daily_temp, width = smooth_window) else max(monthly_temp)
 
   # Thermal class (0 = t-low, 1 = t-mid, 2 = t-high) from temp_max vs the crop's base
-  # and optimum reproductive-phase temperatures. With harv_eps > 0 and a prior class,
-  # a thermostat deadband (absolute harv_tmax_margin) relaxes each threshold toward
+  # and optimum reproductive-phase temperatures. With harv_tmax_margin > 0 and a prior
+  # class, a thermostat deadband (absolute harv_tmax_margin) relaxes each threshold toward
   # keeping last year's class, so temp_max must move decisively past base/opt to flip
   # the class (and the whole harvest formula) -- the seas_eps pattern on the harvest
   # rule's thermal split.
   thr_base <- temp_base_rphase
   thr_opt  <- temp_opt_rphase
-  if (harv_eps > 0 && !is.na(prev_tclass)) {
+  if (harv_tmax_margin > 0 && !is.na(prev_tclass)) {
     thr_base <- if (prev_tclass >= 1L) thr_base - harv_tmax_margin else thr_base + harv_tmax_margin
     thr_opt  <- if (prev_tclass >= 2L) thr_opt  - harv_tmax_margin else thr_opt  + harv_tmax_margin
   }

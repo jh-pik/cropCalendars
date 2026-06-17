@@ -19,7 +19,7 @@ calcSowingDate(
   wet_doy = NULL,
   monthly_prec = NULL,
   monthly_pet = NULL,
-  cross_smooth_window = 0L
+  smooth_window = 31L
 )
 }
 \arguments{
@@ -81,11 +81,11 @@ wettest 4-month ratio-of-sums (\eqn{\sum P / \sum PET}). Coarser (~1-month
 resolution) than the daily 120-day rule, but identical in form (sums P and PET
 separately, no daily interpolation).}
 
-\item{cross_smooth_window}{Integer odd day-window for smoothing \code{daily_temp}
-before the spring/fall threshold crossings only (the coldest-month reductions use
-the raw series). Default \code{0} = off. The daily climatology is kept raw and the
-crossing input is conditioned here, so the smoothing does not affect the
-reductions or the 120-day wettest window.}
+\item{smooth_window}{Integer day-window for the daily-climatology smoothing -- the
+single global window applied to BOTH the threshold-crossing input (\code{daily_temp}
+smoothed before the spring/fall crossings) AND the daily reductions here (coldest-window
+mean and coldest/warmest anchor DOYs). Default 31 (odd). See \code{calcCropCalendars}. The raw
+daily climatology is still kept; this only sets the window the rules read it through.}
 }
 \description{
 Calculate sowing date (Waha et al., 2012)

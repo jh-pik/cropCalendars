@@ -13,7 +13,8 @@ calcHarvestDate(
   seasonality,
   harvest_rule,
   hd_vector,
-  daily_temp = NULL
+  daily_temp = NULL,
+  smooth_window = 31L
 )
 }
 \arguments{
@@ -44,6 +45,10 @@ temperature (\code{dtemp} from \code{calcClimatology}). When supplied, the
 "too cold to grow" guards use the warmest 30-day window mean instead of
 \code{max(monthly_temp)} (continuous; consistent with \code{calcHarvestRule}).
 \code{NULL} (default) uses the monthly maximum.}
+
+\item{smooth_window}{Integer day-window for the daily-climatology reductions (here the
+warmest-window mean used by the too-cold guards); the single global smoothing window
+(default 31). See \code{calcCropCalendars}.}
 }
 \description{
 Rule-based estimation of the end of the crop growing period

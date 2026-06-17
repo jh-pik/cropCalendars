@@ -7,11 +7,48 @@
 # climate windows when two months are near-tied.
 #
 # A daily climatological value (dtemp/dprec/dpet) is already a per-DOY mean over
-# the 30-year window, smoothed by cross_smooth_window, so the equivalent statistic
-# over a 30-day window reproduces the calendar-month quantity continuously, with no
-# month-boundary discretisation. These helpers are the daily replacements; each is
-# the strict analogue of the monthly reduction it supersedes. They reuse the
-# package-internal .circRollSum (O(n) circular window sum) and .doyWarmestWindow.
+# the 30-year window, so the equivalent statistic over a `width`-day window
+# reproduces the calendar-month quantity continuously, with no month-boundary
+# discretisation. These helpers are the daily replacements; each is the strict
+# analogue of the monthly reduction it supersedes. They build on .circRoll (below)
+# and .doyWarmestWindow.
+
+# Circular rolling-window reduction over a DOY/month-indexed cycle -- the single
+# windowing primitive behind every daily reduction AND the rule-time smoothing
+# (also used by the 120-day wettest window in calcDoyWetMonth). For each anchor day
+# it sums `w` consecutive values of `x`, wrapping across the year boundary; O(n) via
+# a cumulative sum (an explicit per-window vapply is O(n*w) and dominated the
+# crop-calendar runtime). Identical to summing each window directly. w <= 1 returns
+# `x` unchanged (reduction off); callers guarantee w < n.
+# The same windows, re-indexed by the chosen anchor day (a circular shift of the
+# start-positioned sum):
+#   position = "start"  : output[d] = window [d, d+w-1], anchored at its FIRST day
+#                         (default; the 120-day wettest window relies on this start
+#                         indexing). shift 0.
+#   position = "center" : output[d] = window centred on d. shift h = w %/% 2.
+#   position = "end"    : output[d] = window [d-w+1, d], anchored at its LAST day.
+#                         shift w - 1. (Used with "start" to form .dailyPpetDiff as
+#                         a trailing-minus-leading difference about a junction day.)
+#   mean = FALSE / TRUE : window sum (default) or window mean (sum / w).
+#
+# CAVEAT (centred means / argmax): for an EVEN w there is no exact symmetric
+# centre, so it is taken as h = w %/% 2 and the window sits half a day low
+# ([d-h, d+h-1] rather than a symmetric [d-h, d+h]); an ODD w (e.g. the default
+# smooth_window = 31) is exactly symmetric. "start"/"end" are exact for any w (a
+# window's first/last day is unambiguous), and the extremum reductions (max/min
+# over ALL windows) are invariant to the anchor -- only the centred-mean smoothing
+# and the centred argmax carry the half-day shift.
+.circRoll <- function(x, w, position = c("start", "center", "end"), mean = FALSE) {
+  position <- match.arg(position)
+  w <- as.integer(w)
+  if (is.na(w) || w <= 1L) return(x)
+  n     <- length(x)
+  cs    <- cumsum(c(0, x, x[seq_len(w - 1L)]))   # length n + w
+  s     <- cs[(1:n) + w] - cs[1:n]               # start-positioned window sum
+  shift <- switch(position, start = 0L, center = w %/% 2L, end = w - 1L)
+  if (shift > 0L) s <- s[((seq_len(n) - 1L - shift) %% n) + 1L]
+  if (mean) s / w else s
+}
 
 # Reconstruct the 12 calendar-month values from a 365-day DOY climatology: the
 # monthly mean (temperature) or monthly sum (precipitation) over each month's DOYs.
@@ -28,32 +65,14 @@
   vapply(seq_len(12L), function(m) f(daily[start[m]:end[m]]), numeric(1))
 }
 
-# Fast centred circular running mean of a single DOY-indexed daily cycle, via a
-# C-level cumsum (no R-level per-DOY loop -- unlike .circSmooth, which is written to
-# vectorise over the cell dimension of a [cells x ndays] matrix and is too slow to
-# call once per cell). The window is forced odd. This is the rule-time smoothing
-# applied to the threshold-CROSSING inputs only (see cross_smooth_window): the daily
-# climatology is kept raw, and each crossing detector smooths its own input here, so
-# the smoothing no longer leaks into the reductions / 120-day wet window (which are
-# ~invariant to it). w <= 1 returns the series unchanged (smoothing off).
-.smoothCycle <- function(x, w) {
-  w <- as.integer(w)
-  if (is.na(w) || w <= 1L) return(x)
-  n <- length(x); h <- (w - 1L) %/% 2L; w <- 2L * h + 1L      # force odd
-  if (h < 1L || n <= w) return(x)
-  ext <- c(x[(n - h + 1L):n], x, x[1:h])                      # circular pad both ends
-  cs  <- cumsum(c(0, ext))
-  (cs[(1:n) + w] - cs[1:n]) / w                               # centred window mean
-}
-
 # Mean of the warmest `width`-day window (daily analogue of max(monthly_temp)).
 .warmestWindowMean <- function(daily_temp, width = 30L) {
-  max(.circRollSum(daily_temp, width)) / width
+  max(.circRoll(daily_temp, width, mean = TRUE))
 }
 
 # Mean of the coldest `width`-day window (daily analogue of min(monthly_temp)).
 .coldestWindowMean <- function(daily_temp, width = 30L) {
-  min(.circRollSum(daily_temp, width)) / width
+  min(.circRoll(daily_temp, width, mean = TRUE))
 }
 
 # Centre DOY of the coldest `width`-day window (daily analogue of the coldest-month
@@ -63,23 +82,30 @@
 }
 
 # Driest `width`-day-window P/PET (daily analogue of min(monthly_ppet)): the minimum
-# over DOY of the spike-free 30-day ratio-of-sums (Sum P / Sum PET).
+# over DOY of the spike-free ratio-of-sums (Sum P / Sum PET). Position is irrelevant
+# (the minimum is over all windows); ratio of sums == ratio of means, so no /width.
 .driestWindowPpet <- function(daily_prec, daily_pet, width = 30L) {
-  min(.circRollSum(daily_prec, width) / pmax(.circRollSum(daily_pet, width), 1e-6))
+  min(.circRoll(daily_prec, width) / pmax(.circRoll(daily_pet, width), 1e-6))
 }
 
 # Daily analogue of mppet_diff (= mppet[m] - mppet[m+1], the month-over-month
-# moisture trend; > 0 means the next month is drier). At each DOY it is the 30-day
-# Sum P / Sum PET centred at that DOY minus the same window centred ~`width` days
-# later, so a positive value flags a declining-moisture DOY exactly as the monthly
-# version flagged a declining-moisture month -- but on the daily grid, removing the
-# residual whole-month quantization of the second wet-season-end candidate (doy_wet2).
+# moisture trend; > 0 means the next month is drier). Built exactly as the monthly
+# version: at each junction day j it is the `width`-day Sum P / Sum PET of the window
+# ENDING at j (the trailing/"this month" side) minus the window STARTING at j (the
+# leading/"next month" side), so a positive value flags declining moisture across j --
+# but on the daily grid, removing the residual whole-month quantization of the second
+# wet-season-end candidate (doy_wet2). The junction value is assigned back to the DOY
+# d = j - h that the two windows straddle (h = width %/% 2).
+# NORMALISED to a per-30-day rate (x 30/lag): the two window centres are `lag = 2*h`
+# days apart, but the comparison threshold ppet_ratio_diff is calibrated as a
+# delta(P/PET) per 30 days (= the month-over-month mppet_diff), so the diff is rescaled
+# to that horizon and the threshold stays valid for ANY `width`. At width 30 and 31
+# lag=30 -> factor 1 (identical to the original).
 .dailyPpetDiff <- function(daily_prec, daily_pet, width = 30L) {
-  r <- .circRollSum(daily_prec, width) / pmax(.circRollSum(daily_pet, width), 1e-6)
-  n <- length(r); h <- width %/% 2L
-  idx <- function(k) ((seq_len(n) - 1L + k) %% n) + 1L
-  # .circRollSum at DOY d is the forward window [d, d+width-1] (centre d + h), so
-  # r[idx(-h)] is the window centred at d and r[idx(h)] the window centred ~width
-  # days later: their difference is mppet_diff valued at d.
-  r[idx(-h)] - r[idx(h)]
+  ppet <- function(pos) .circRoll(daily_prec, width, pos) /
+                        pmax(.circRoll(daily_pet, width, pos), 1e-6)
+  jd  <- ppet("end") - ppet("start")   # (window ending at j) - (window starting at j)
+  n <- length(jd); h <- width %/% 2L; lag <- 2L * h
+  idx <- ((seq_len(n) - 1L + h) %% n) + 1L   # junction j = d + h, assigned back to DOY d
+  jd[idx] * (30 / lag)
 }

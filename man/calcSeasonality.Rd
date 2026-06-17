@@ -11,7 +11,8 @@ calcSeasonality(
   prev_seas = NA_character_,
   seas_eps = 0,
   mtemp_margin = 1,
-  daily_temp = NULL
+  daily_temp = NULL,
+  smooth_window = 31L
 )
 }
 \arguments{
@@ -53,6 +54,10 @@ series instead of \code{min(monthly_temp)} (continuous, no month-boundary
 quantisation). The CV classifiers stay on the 12 monthly values -- a daily CV
 has far larger variance and would invalidate the calibrated 0.4 / 0.010
 thresholds. \code{NULL} (default) keeps the monthly minimum (backward compatible).}
+
+\item{smooth_window}{Integer day-window for the daily-climatology reductions (here the
+coldest-window mean); the single global smoothing window (default 31). See
+\code{calcCropCalendars}.}
 }
 \description{
 Calculate seasonality type based on average monthly climate

@@ -22,7 +22,7 @@ pushClimateYear(
   lat = NULL
 )
 
-ringClimatology(ring, smooth_window = 0L)
+ringClimatology(ring)
 }
 \arguments{
 \item{ncells}{number of grid cells.}
@@ -35,9 +35,6 @@ ringClimatology(ring, smooth_window = 0L)
 
 \item{temp, prec, dates, swdown, lwdown, windspeed, humid, ps, lat}{one calendar year
 of forcings, exactly as passed to \code{addYearClimate}.}
-
-\item{smooth_window}{Integer odd day-window for circularly smoothing the daily
-climatologies, forwarded to \code{finalizeClimate} (0/1 = off).}
 }
 \value{
 `initClimateRing` returns a ring; `ringClimatology` returns the daily

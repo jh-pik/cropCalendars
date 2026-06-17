@@ -16,8 +16,7 @@ calcClimatology(
   lwdown = NULL,
   windspeed = NULL,
   humid = NULL,
-  ps = 101325,
-  smooth_window = 0L
+  ps = 101325
 )
 }
 \arguments{
@@ -57,10 +56,6 @@ vector matching length of \code{temp}. Required when \code{swdown} is given.}
 \code{lat} and \code{day} (used internally for date handling and the PT
 orbital path) are not passed to \code{calcPET_FAO56}, which uses full
 24 h fluxes and requires no geometric daylength.}
-
-\item{smooth_window}{Integer odd day-window for circularly smoothing the daily
-climatologies (\code{dtemp}, \code{dprec}, \code{dpet}), forwarded to
-\code{finalizeClimate}. 0/1 (default) = no smoothing.}
 }
 \value{
 list with five monthly vectors (length 12) and two daily vectors

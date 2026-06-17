@@ -61,7 +61,7 @@
 
 calcDoyWetMonth <- function(daily_prec, daily_pet,
                             prev_doy = NA_integer_, eps = 0, decay = 0.3) {
-  ws <- .circRollSum(daily_prec, 120) / pmax(.circRollSum(daily_pet, 120), 1e-6)
+  ws <- .circRoll(daily_prec, 120) / pmax(.circRoll(daily_pet, 120), 1e-6)
   # Plain argmax when hysteresis is off/unseeded, or when every window sums to 0
   # (a bone-dry cell): max(ws) == 0 would make q = ws/max(ws) all NaN below and
   # which.max(score) return integer(0). which.max(ws) safely returns DOY 1 here.
@@ -92,16 +92,6 @@ calcDoyWetMonth <- function(daily_prec, daily_pet,
 # that is a daily sliding-window-pipeline concern.
 .wetDoyMonthly <- function(monthly_prec, monthly_pet) {
   midday <- c(15, 43, 74, 104, 135, 165, 196, 227, 257, 288, 318, 349)
-  ws <- .circRollSum(monthly_prec, 4L) / pmax(.circRollSum(monthly_pet, 4L), 1e-6)
+  ws <- .circRoll(monthly_prec, 4L) / pmax(.circRoll(monthly_pet, 4L), 1e-6)
   as.integer(midday[which.max(ws)])
-}
-
-# Circular rolling-window sum: returns, for each start position p (1-based), the
-# sum of `w` consecutive values of `x` wrapping across the year boundary. O(n) via
-# a cumulative sum (the previous per-window vapply was O(n*w) and dominated the
-# crop-calendar runtime). Result is identical to summing each window directly.
-.circRollSum <- function(x, w) {
-  n  <- length(x)
-  cs <- cumsum(c(0, x, x[seq_len(w - 1L)]))   # length n + w
-  cs[(1:n) + w] - cs[1:n]
 }

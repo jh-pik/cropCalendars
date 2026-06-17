@@ -31,8 +31,8 @@ scen <- args[2]
 
 W         <- clm_avg_years
 emit_step <- as.integer(Sys.getenv("EMIT_STEP", as.character(clm_emit_step)))
-# NB: 01a writes the RAW daily climatology. The crossing-detector smoothing
-# (cross_smooth_window) is now applied at rule time in 01b, so it is tunable there
+# NB: 01a writes the RAW daily climatology. The global daily-climatology smoothing
+# (smooth_window) is applied at rule time in 01b, so it is tunable there
 # without recomputing this climatology cache.
 
 # YEARS subset (dev iteration). "" = all emit years.

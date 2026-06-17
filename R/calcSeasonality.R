@@ -35,6 +35,9 @@
 #'   quantisation). The CV classifiers stay on the 12 monthly values -- a daily CV
 #'   has far larger variance and would invalidate the calibrated 0.4 / 0.010
 #'   thresholds. \code{NULL} (default) keeps the monthly minimum (backward compatible).
+#' @param smooth_window Integer day-window for the daily-climatology reductions (here the
+#'   coldest-window mean); the single global smoothing window (default 31). See
+#'   \code{calcCropCalendars}.
 #'
 #' @export
 calcSeasonality <- function(monthly_temp,
@@ -43,14 +46,15 @@ calcSeasonality <- function(monthly_temp,
                             prev_seas    = NA_character_,
                             seas_eps     = 0,
                             mtemp_margin = 1,
-                            daily_temp   = NULL
+                            daily_temp   = NULL,
+                            smooth_window = 31L
                             ) {
 
   var_coeff_prec <- calcVarCoeff(monthly_prec)
   var_coeff_temp <- calcVarCoeff(deg2k(monthly_temp))
   # Coldest-month temperature: daily coldest-30-day-window mean when the daily
   # climatology is supplied, else the calendar-month minimum (see @param daily_temp).
-  min_temp       <- if (!is.null(daily_temp)) .coldestWindowMean(daily_temp) else min(monthly_temp)
+  min_temp       <- if (!is.null(daily_temp)) .coldestWindowMean(daily_temp, width = smooth_window) else min(monthly_temp)
 
   # Threshold deadband (hysteresis). With no prior state / seas_eps = 0 these are
   # the plain Waha thresholds, so the classification is unchanged (backward compatible).

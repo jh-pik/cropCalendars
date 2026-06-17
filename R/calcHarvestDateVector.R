@@ -40,20 +40,27 @@
 #' @param cross_min_duration integer minimum sustained-excursion length (days)
 #' forwarded to \code{calcDoyCrossThreshold} for the wet-season-end and
 #' hot-day crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.
-#' @param cross_smooth_window Integer odd day-window for smoothing the crossing
-#' inputs only -- the hot-day \code{daily_temp} crossing, and \code{daily_prec} /
-#' \code{daily_pet} before the wet-season-end P/PET ratio. Default \code{0} = off.
-#' The reductions (\code{warmest_day}, driest-month P/PET) use the raw series.
-#' @param prev_wet_found,prev_always_wet Logical hysteresis state from last year (or
-#' \code{NA}): did a wet-season-end crossing exist, and was the cell always-wet
-#' (\code{min_ppet >= ppet_min})? Used only when \code{harv_eps > 0}. The resolved
-#' values are returned as \code{attr(., "wet_found")} / \code{attr(., "always_wet")}.
-#' @param harv_eps Non-negative numeric (default 0 = off). Relative deadband for the
-#' wet-branch thresholds: it relaxes \code{ppet_ratio} (wet-season-end crossing
-#' existence) toward keeping \code{prev_wet_found}, and \code{ppet_min} (always-wet
-#' test) toward keeping \code{prev_always_wet}, so a grazing P/PET wobble no longer
-#' snaps \code{hd_wetseas} between a crossing date and the hd_last/hd_first fallback.
-#' Mirrors \code{seas_eps}.
+#' @param smooth_window Integer day-window for the daily-climatology smoothing -- the single
+#' global window applied to BOTH the crossing inputs (the hot-day \code{daily_temp} crossing,
+#' and \code{daily_prec} / \code{daily_pet} before the wet-season-end P/PET ratio) AND the
+#' reductions (\code{warmest_day}, driest-window P/PET, the \code{daily_ppet_diff} trend).
+#' Default 31 (odd). See \code{calcCropCalendars}.
+#' @param prev_always_wet Logical hysteresis state from last year (or \code{NA}): was
+#' the cell always-wet (\code{min_ppet >= ppet_min})? Used only when
+#' \code{harv_ppet_eps > 0}. The resolved value is returned as
+#' \code{attr(., "always_wet")}.
+#' @param harv_ppet_eps Non-negative relative deadband (default 0 = off) on the
+#' always-wet test (\code{min_ppet} vs \code{ppet_min}): it relaxes \code{ppet_min}
+#' toward keeping \code{prev_always_wet}, so a grazing P/PET wobble no longer snaps
+#' \code{hd_wetseas} between \code{hd_last} and \code{hd_first}.
+#' @param prev_rw1 Integer level wet-end EXISTENCE regime from last year (0 = absent-DRY,
+#' 1 = found, 2 = absent-WET), or \code{NA}. Used only on the \code{cc_regime} path when
+#' \code{harv_exist_eps > 0}.
+#' @param harv_exist_eps Non-negative relative directional deadband (default 0 = off) on the
+#' wet-end EXISTENCE boundary (the \code{ppet_ratio} level crossing, \code{doy_wet1}). Leaving
+#' the absent-DRY regime needs the peak to clear \code{ppet_ratio * (1 + eps)}; leaving
+#' absent-WET needs the trough below \code{ppet_ratio * (1 - eps)}. Experimental, gated by
+#' \code{options(cc_regime = TRUE)}.
 #'
 #' @seealso getCropParam, calcClimatology, calcSowingDate, calcCropCalendars
 #' @export
@@ -67,10 +74,11 @@ calcHarvestDateVector <- function(croppar,
                                   daily_prec = NULL,
                                   daily_pet  = NULL,
                                   cross_min_duration = 1L,
-                                  cross_smooth_window = 0L,
-                                  prev_wet_found = NA,
+                                  smooth_window = 31L,
                                   prev_always_wet = NA,
-                                  harv_eps = 0
+                                  harv_ppet_eps = 0,
+                                  prev_rw1 = NA_integer_,
+                                  harv_exist_eps = 0
                                   ) {
 
   # Extract individual parameter names and values
@@ -87,12 +95,12 @@ calcHarvestDateVector <- function(croppar,
   # Spike-free daily P/PET for the wet-season-end crossing: the ratio of the
   # per-DOY mean P and mean PET (never blows up — mean PET on a DOY is never ~0),
   # unlike the mean of daily P/PET ratios. This feeds a threshold CROSSING, so P and
-  # PET are smoothed (cross_smooth_window) BEFORE the ratio is formed -- the daily
+  # PET are smoothed (smooth_window) BEFORE the ratio is formed -- the daily
   # climatology itself is kept raw, and only the crossing input is conditioned here
   # (0 = no-op). Fall back to the interpolated monthly ratio if daily P/PET absent.
   if (!is.null(daily_prec) && !is.null(daily_pet)) {
-    daily_ppet <- .smoothCycle(daily_prec, cross_smooth_window) /
-                  pmax(.smoothCycle(daily_pet, cross_smooth_window), 1e-6)
+    daily_ppet <- .circRoll(daily_prec, smooth_window, "center", mean = TRUE) /
+                  pmax(.circRoll(daily_pet, smooth_window, "center", mean = TRUE), 1e-6)
   } else {
     daily_ppet <- .monthlyToDoy365(monthly_ppet)
   }
@@ -103,21 +111,17 @@ calcHarvestDateVector <- function(croppar,
   # (doy_wet2). Fall back to interpolating the 12 monthly differences only when the
   # daily series are absent.
   if (!is.null(daily_prec) && !is.null(daily_pet)) {
-    daily_ppet_diff <- .dailyPpetDiff(daily_prec, daily_pet)
+    daily_ppet_diff <- .dailyPpetDiff(daily_prec, daily_pet, width = smooth_window)
   } else {
     daily_ppet_diff <- .monthlyToDoy365(monthly_ppet_diff)
   }
 
-  # Wet-season-end crossing hysteresis (harv_eps > 0). Whether the daily P/PET cycle
-  # crosses ppet_ratio downward at all -- i.e. whether a wet-season-end DATE exists --
-  # flips year to year when the cycle grazes ppet_ratio, snapping hd_wetseas between a
-  # crossing date and the always-wet/always-dry fallback (a large jump). The deadband
-  # nudges the threshold toward keeping last year's found/not-found status: when the
-  # crossing was found, raise ppet_ratio so the cycle still dips below it (the common
-  # marginal-wet drift); when it was not, lower it. Mirrors the seas_eps thermostat.
-  ppet_ratio_eff <- ppet_ratio
-  if (harv_eps > 0 && !is.na(prev_wet_found))
-    ppet_ratio_eff <- ppet_ratio * (if (prev_wet_found) 1 + harv_eps else 1 - harv_eps)
+  # NB: the wet-season-end crossing EXISTENCE is deliberately NOT deadbanded. A
+  # one-directional nudge of ppet_ratio cannot keep a band-membership condition
+  # (min(daily_ppet) < ppet_ratio < max) sticky -- raising it to keep a found crossing
+  # instead eliminates the crossing whenever the wet peak sits just above ppet_ratio,
+  # forcing a found/not-found 2-cycle. Measured on unbiased cells this manufactured
+  # far MORE flicker than it removed, so the wet-end crossing is left raw.
 
   # Shortest cycle: crop lower biological limit
   hd_first <- sowing_date + min_growingseason
@@ -131,7 +135,7 @@ calcHarvestDateVector <- function(croppar,
   # End of wet season ----
   doy_wet1 <- calcDoyCrossThreshold(
     daily_ppet,
-    ppet_ratio_eff,
+    ppet_ratio,
     min_duration = cross_min_duration
     )[["doy_cross_down"]]
   doy_wet2 <- calcDoyCrossThreshold(
@@ -139,53 +143,87 @@ calcHarvestDateVector <- function(croppar,
     ppet_ratio_diff,
     min_duration = cross_min_duration
     )[["doy_cross_down"]]
-  doy_wet_vec <- ifelse(
-    c(doy_wet1, doy_wet2) < sowing_date & c(doy_wet1, doy_wet2) != -9999,
-    c(doy_wet1, doy_wet2) + ndays_year,
-    c(doy_wet1, doy_wet2)
-    )
-  # If more than one wet seasons take the first one, else -9999
-  doy_wet_first <- ifelse(
-    length(doy_wet_vec[doy_wet_vec != -9999]) > 0,
-    min(doy_wet_vec[doy_wet_vec != -9999]),
-    -9999
-    )
-  # If does not find harvest date and it is always high rainfall. The "driest month"
-  # P/PET uses the driest 30-day window of the daily Sum P / Sum PET when available
-  # (continuous; no month quantisation), else the calendar-month minimum.
-  min_ppet <- if (!is.null(daily_prec) && !is.null(daily_pet))
-    .driestWindowPpet(daily_prec, daily_pet) else min(monthly_ppet)
-  # Always-wet test hysteresis (harv_eps > 0): the min_ppet >= ppet_min test decides
-  # hd_last vs hd_first when no wet-season-end crossing exists, and flips (a big jump)
-  # when min_ppet grazes ppet_min. Relax ppet_min toward keeping last year's verdict
-  # (thermostat, relative harv_eps).
-  ppet_min_eff <- ppet_min
-  if (harv_eps > 0 && !is.na(prev_always_wet))
-    ppet_min_eff <- ppet_min * (if (prev_always_wet) 1 - harv_eps else 1 + harv_eps)
-  always_wet <- min_ppet >= ppet_min_eff
-  if (doy_wet1 == -9999) {
-    if (always_wet) {
-      hd_wetseas <- hd_last
-    } else {
-      hd_wetseas <- hd_first
-    }
+  # Wet-season-end estimates (P/PET level doy_wet1 + trend doy_wet2); the crop escapes
+  # terminal water stress at the first valid one (a sub-minimum wet-end wraps to next year,
+  # see the hd_wetseas branch). wet_ends is assembled inside that branch (the cc_regime path
+  # may re-detect the crossings at deadbanded thresholds first).
+  # If does not find harvest date and it is always high rainfall. Default: the
+  # .driestWindowPpet over the smooth_window window (continuous; no month quantisation),
+  # else the calendar-month minimum. cc_harmonize_minppet keys the always-wet test instead
+  # to min(daily_ppet) -- the SAME variable as the wet-end EXISTENCE crossing -- closing the
+  # ppet_min/ppet_ratio dead-zone. That only pays off if daily_ppet is well smoothed:
+  # harmonizing at smooth_window=15 regressed +40% on Uruguay+France (the 15-day cycle is
+  # too noisy); at smooth_window=30 min(daily_ppet) ~ the driest-window magnitude AND
+  # consistent with the crossing (toggle default off; under A/B).
+  min_ppet <- if (!is.null(daily_prec) && !is.null(daily_pet)) {
+    if (isTRUE(getOption("cc_harmonize_minppet", FALSE))) min(daily_ppet)
+    else .driestWindowPpet(daily_prec, daily_pet, width = smooth_window)
+  } else min(monthly_ppet)
+  # Escape harvest for a found wet season: wrap a wet-end to next year if its escape
+  # harvest would be SUB-MINIMUM (wet_end + rphase < hd_first), not only if strictly
+  # before sowing. A wet-end resolving to a sub-minimum season is the tail of the PREVIOUS
+  # wet season, spuriously detected near the sowing DOY; the long (wrapped) season is the
+  # correct one. This pulls the near-sowing oscillation band onto the long side so it no
+  # longer flickers down to a short (hd_first) season -- the dominant ~50% of harvest jumps.
+  wetseas_escape <- function(wet_ends) {
+    wrap <- wet_ends + rphase_duration < hd_first
+    min(ifelse(wrap, wet_ends + ndays_year, wet_ends)) + rphase_duration
+  }
+  # Always-wet test (min_ppet >= ppet_min) deciding hd_last vs hd_first when no wet-end
+  # exists; flips (a big jump) when min_ppet grazes ppet_min. Thermostat: relax ppet_min
+  # toward keeping last year's verdict by the given relative deadband.
+  always_wet_test <- function(eps) {
+    ppet_min_eff <- if (eps > 0 && !is.na(prev_always_wet))
+      ppet_min * (if (prev_always_wet) 1 - eps else 1 + eps) else ppet_min
+    min_ppet >= ppet_min_eff
+  }
+
+  if (isTRUE(getOption("cc_regime", FALSE))) {
+    # DIRECTIONAL Schmitt-trigger deadband (harv_exist_eps) on the wet-end EXISTENCE
+    # boundary only -- the ppet_ratio LEVEL crossing (doy_wet1). Last year's regime shifts
+    # the bar asymmetrically so a grazing signal must move decisively to flip the existence
+    # of the crossing, WITHOUT a single nudged threshold (which would destroy the very
+    # crossing it tries to keep). doy_wet2 (TREND) is left plain (a deadband there was strictly
+    # worse), and the always-wet test keeps its OWN deadband (harv_ppet_eps) -- ppet_min is a
+    # separate aridity floor (Rice: ppet_ratio=1.0 but ppet_min=0.5), not the same threshold.
+    eps <- harv_exist_eps
+    # ppet_ratio -- LEVEL wet-end (doy_wet1). 3-state: 0 absent-DRY / 1 found / 2 absent-WET.
+    # Leave dry: peak must clear ppet_ratio*(1+eps); leave wet: trough below ppet_ratio*(1-eps).
+    thr1 <- if (is.na(prev_rw1) || eps == 0) ppet_ratio
+            else if (prev_rw1 == 0L) ppet_ratio * (1 + eps)
+            else if (prev_rw1 == 2L) ppet_ratio * (1 - eps)
+            else                     ppet_ratio
+    doy_wet1 <- calcDoyCrossThreshold(daily_ppet, thr1,
+                                      min_duration = cross_min_duration)[["doy_cross_down"]]
+    rw1 <- if (max(daily_ppet) < thr1) 0L else if (min(daily_ppet) >= thr1) 2L else 1L
+    # always-wet test keeps its own independent deadband (NOT the regime eps).
+    always_wet <- always_wet_test(harv_ppet_eps)
+
+    wet_ends <- c(doy_wet1, doy_wet2); wet_ends <- wet_ends[wet_ends != -9999]
+    hd_wetseas <- if (doy_wet1 == -9999) (if (always_wet) hd_last else hd_first)
+                  else wetseas_escape(wet_ends)
+    harv_hi <- rw1 + 6L * as.integer(always_wet)
   } else {
-    hd_wetseas <- doy_wet_first + rphase_duration
+    always_wet <- always_wet_test(harv_ppet_eps)
+    wet_ends <- c(doy_wet1, doy_wet2); wet_ends <- wet_ends[wet_ends != -9999]
+    hd_wetseas <- if (doy_wet1 == -9999) (if (always_wet) hd_last else hd_first)
+                  else wetseas_escape(wet_ends)
+    harv_hi <- 6L * as.integer(always_wet)
   }
 
   # Warmest period of the year ----
   # Centre DOY of the warmest 30-day window of the daily climatology (the daily
   # analogue of the previous "mid-day of the warmest month"); the legacy monthly
   # fallback is exactly that mid-day when the daily series is absent.
-  warmest_day <- if (have_dtemp) .doyWarmestWindow(daily_temp, width = 30) else
+  warmest_day <- if (have_dtemp) .doyWarmestWindow(daily_temp, width = smooth_window) else
     c(15, 43, 74, 104, 135, 165, 196, 227, 257, 288, 318, 349)[which.max(monthly_temp)]
   hd_temp_base <- ifelse(
     sowing_season == "winter", warmest_day, warmest_day + rphase_duration
     )
 
-  # Smoothed daily temperature for the hot-day threshold crossings ONLY (warmest_day
-  # above uses the raw daily climatology). cross_smooth_window = 0 -> no-op.
-  daily_temp_x <- .smoothCycle(daily_temp, cross_smooth_window)
+  # Smoothed daily temperature for the hot-day threshold crossings, using the same global
+  # smooth_window as warmest_day and all other reductions.
+  daily_temp_x <- .circRoll(daily_temp, smooth_window, "center", mean = TRUE)
 
   # First hot day ----
   doy_exceed_opt_rp <- calcDoyCrossThreshold(
@@ -234,10 +272,10 @@ calcHarvestDateVector <- function(croppar,
   names(hd_vector) <- c("hd_first", "hd_maxrp", "hd_last",
                         "hd_wetseas", "hd_temp_base", "hd_temp_opt")
 
-  # Wet-branch hysteresis state, carried forward by calcCropCalendars: did a
-  # wet-season-end crossing exist this year, and was the cell always-wet?
-  attr(hd_vector, "wet_found")  <- (doy_wet1 != -9999)
-  attr(hd_vector, "always_wet") <- always_wet
+  # Moisture-state hysteresis carried forward by calcCropCalendars: the high part of the
+  # packed harvest state. 0/1 (always-wet flag) on the default path; 0/1/2 (DRY/NORMAL/WET
+  # regime) on the cc_regime path.
+  attr(hd_vector, "harv_hi") <- harv_hi
   return(hd_vector)
 }
 
@@ -253,8 +291,8 @@ calcHarvestDateVector <- function(croppar,
 
 # Centre DOY of the warmest `width`-day window of a daily (DOY-indexed)
 # climatology, evaluated circularly. Daily analogue of "warmest month mid-day".
+# The centred rolling sum is already indexed by window centre, so its argmax IS the
+# centre DOY (no manual half-width shift).
 .doyWarmestWindow <- function(daily_value, width = 30) {
-  n     <- length(daily_value)
-  start <- which.max(.circRollSum(daily_value, width))  # first DOY of warmest window
-  ((start - 1L + width %/% 2L) %% n) + 1L                # centre DOY
+  as.integer(which.max(.circRoll(daily_value, width, "center")))
 }

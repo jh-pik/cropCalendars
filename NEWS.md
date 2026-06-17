@@ -2,6 +2,45 @@
 
 ## 0.2.0 — annual sliding-window pipeline
 
+### Unified daily-climatology smoothing window
+- **One windowing primitive, `.circRoll`.** The forward-sum `.circRollSum` and the
+  centred-mean `.smoothCycle` are merged into a single `.circRoll(x, w, position, mean)`
+  that re-indexes the one rolling sum by a chosen anchor day: `position = "start"` (default,
+  the old forward sum — the 120-day wettest window relies on its start indexing),
+  `"center"` (circular shift by `w %/% 2`), or `"end"` (window's last day); `mean = TRUE`
+  divides by the window length. The manual half-width re-centring in `.doyWarmestWindow`
+  (now a plain centred argmax) is gone, and `.dailyPpetDiff` is rewritten as its natural
+  form — the window **ending** at the junction minus the window **starting** at it (the
+  trailing-vs-leading moisture trend, exactly the monthly `mppet[m] − mppet[m+1]`). At odd
+  `w` (the 31 default) this is identical to the previous centred formulation. `.smoothCycle`
+  and `.circRollSum` are removed.
+- **`smooth_window` default 30 → 31 (odd).** `.circRoll` no longer force-odds the window, so
+  the package now has ONE centring convention (`h = w %/% 2`). An odd window is exactly
+  symmetric for the centred smoothing and argmax; an even window centres half a day low
+  (documented caveat on `.circRoll`). 31 keeps the ~1-month width while making the crossings,
+  `.doyWarmestWindow`, and `.dailyPpetDiff` all exactly symmetric. (Previously
+  `smooth_window = 30` was silently force-odded to 29 for the crossings only — this removes
+  that hidden asymmetry; it changes the effective crossing window 29 → 31, so re-validate.)
+- **Removed the dormant build-time smoother.** `finalizeClimate()` (and `ringClimatology()`,
+  `calcClimatology()`) had a `smooth_window` argument that applied a centred circular running
+  mean (`.circSmooth`) to the daily climatology *at build time*. The pipeline now smooths at
+  rule time only (`smooth_window` → `.smoothCycle`), 01a writes the RAW climatology, and no
+  caller passed the build-time knob (it defaulted to off everywhere). The argument, the
+  `.circSmooth` helper, and the duplicate centred-mean code path are dropped; the rule-time
+  `smooth_window` is now the single, unambiguous smoothing knob.
+- **`cross_smooth_window` → `smooth_window`: one global window for BOTH crossings and
+  reductions** (`calcCropCalendars` and all callees; default **31**, see above). Previously the
+  threshold-crossing inputs used a tunable 15-day `.smoothCycle` while the extremum/driest
+  reductions used a structural 30-day window — two windows on the same daily climatology.
+  They are unified: `smooth_window` now drives the crossing smoothing AND the
+  `.warmestWindowMean`/`.coldestWindowMean`/`.doy*Window`/`.driestWindowPpet`/`.dailyPpetDiff`
+  reductions. At 30 the reductions are unchanged (already 30); the crossings move 15→30.
+- **`.dailyPpetDiff` normalised to a per-30-day rate** (`× 30/lag`): the `doy_wet2`
+  moisture-trend threshold `ppet_ratio_diff` is calibrated as Δ(P/PET) per 30 days, so the
+  diff is rescaled to that horizon and stays valid for any `smooth_window` (no-op at 30).
+  Only this reduction needed normalising — the others are means/ratios/argmin compared to
+  absolute thresholds, whose units don't scale with the window.
+
 ### Daily-climatology rule port + ring slimming
 - **All extremum reductions moved from the 12 calendar months to daily 30-day windows.**
   The coldest/warmest-month temperature (`calcSeasonality` min-temp, `calcSowingDate`

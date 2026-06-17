@@ -29,11 +29,15 @@
 #' forwarded to \code{calcSowingDate}/\code{calcHarvestDateVector} ->
 #' \code{calcDoyCrossThreshold} (default 1 = off). See
 #' \code{?calcDoyCrossThreshold}.
-#' @param cross_smooth_window Integer odd day-window for smoothing the
-#' threshold-crossing inputs only (spring/fall temperature, hot-day, wet-season-end),
-#' forwarded to \code{calcSowingDate}/\code{calcHarvestDateVector} (default 0 = off).
-#' The daily climatology (\code{mclimate}) is used raw; smoothing is applied per
-#' crossing detector, so the reductions and the 120-day wettest window are unaffected.
+#' @param smooth_window Integer day-window for the daily-climatology smoothing -- the SINGLE
+#' global window applied to BOTH the threshold-crossing inputs (spring/fall temperature,
+#' hot-day, wet-season-end P/PET) AND the daily reductions (coldest/warmest-window means and
+#' anchor DOYs, driest-window P/PET, the moisture-trend diff). Default 31 (odd, so the
+#' centred smoothing/argmax is exactly symmetric). The raw daily
+#' climatology (\code{mclimate}) is kept; this sets the window the rules read it through.
+#' Forwarded to \code{calcSeasonality}/\code{calcSowingDate}/\code{calcHarvestRule}/
+#' \code{calcHarvestDate}/\code{calcHarvestDateVector}. The 120-day wettest window
+#' (\code{calcDoyWetMonth}) has its own fixed window and is unaffected.
 #' @param prev_seas Character seasonality class from last year (or \code{NA}),
 #' forwarded to \code{calcSeasonality} for class hysteresis. The class is
 #' crop-independent, so this is per-cell state; the resolved class is returned as
@@ -45,17 +49,19 @@
 #' \code{calcSeasonality} as \code{mtemp_margin} (default 1; only used when
 #' \code{seas_eps > 0}).
 #' @param prev_harv Integer packed harvest-rule hysteresis state from last year (or
-#' \code{NA}), encoding the thermal class, wet-season-end-found and always-wet flags
-#' (\code{tclass + 3*wet_found + 6*always_wet}). Unlike the seasonality/wet-window
-#' state this is crop-DEPENDENT, so the caller carries it per cell AND per crop. The
-#' resolved value is returned as \code{attr(., "harv_state")}. Only used when
-#' \code{harv_eps > 0}.
-#' @param harv_eps Non-negative harvest-rule deadband (default 0 = off), forwarded to
-#' \code{calcHarvestRule} (thermal class) and \code{calcHarvestDateVector} (wet-branch).
-#' Suppresses the year-to-year harvest-formula flips from \code{temp_max} / P/PET
-#' grazing the rule thresholds. Mirrors \code{seas_eps}.
-#' @param harv_tmax_margin Absolute deadband (deg C) on the \code{temp_max} vs
-#' base/optimum thresholds when \code{harv_eps > 0} (default 1).
+#' \code{NA}), encoding the thermal class and always-wet flag (\code{tclass +
+#' 3*always_wet}). Unlike the seasonality/wet-window state this is crop-DEPENDENT, so
+#' the caller carries it per cell AND per crop. The resolved value is returned as
+#' \code{attr(., "harv_state")}. Used when \code{harv_tmax_margin > 0} or
+#' \code{harv_ppet_eps > 0}.
+#' @param harv_tmax_margin Absolute deadband (deg C, default 0 = off) on the harvest
+#' rule's \code{temp_max} vs base/optimum reproductive thresholds (thermal class),
+#' forwarded to \code{calcHarvestRule}. Suppresses harvest-formula flips from a
+#' grazing \code{temp_max}.
+#' @param harv_ppet_eps Non-negative relative deadband (default 0 = off) on the
+#' always-wet test (\code{min_ppet} vs \code{ppet_min}), forwarded to
+#' \code{calcHarvestDateVector}. (The wet-season-end crossing existence is not
+#' deadbanded -- a one-directional threshold nudge manufactures flicker there.)
 #' @seealso calcClimatology
 #' @export
 
@@ -69,13 +75,14 @@ calcCropCalendars <- function(lon                   = NULL,
                               wet_window_eps        = 0,
                               wet_window_decay      = 0.3,
                               cross_min_duration    = 1L,
-                              cross_smooth_window   = 0L,
+                              smooth_window         = 31L,
                               prev_seas             = NA_character_,
                               seas_eps              = 0,
                               seas_mtemp_margin     = 1,
                               prev_harv             = NA_integer_,
-                              harv_eps              = 0,
-                              harv_tmax_margin      = 1
+                              harv_tmax_margin      = 0,
+                              harv_ppet_eps         = 0,
+                              harv_exist_eps        = 0
                               ) {
 
   # Import crop parameters (unless already supplied by the caller).
@@ -112,7 +119,8 @@ calcCropCalendars <- function(lon                   = NULL,
     prev_seas    = prev_seas,
     seas_eps     = seas_eps,
     mtemp_margin = seas_mtemp_margin,
-    daily_temp   = dtemp
+    daily_temp   = dtemp,
+    smooth_window = smooth_window
   )
 
   # Resolved wettest-window start, carried forward as hysteresis state. This is the
@@ -143,7 +151,7 @@ calcCropCalendars <- function(lon                   = NULL,
     wet_window_eps        = wet_window_eps,
     wet_window_decay      = wet_window_decay,
     cross_min_duration    = cross_min_duration,
-    cross_smooth_window   = cross_smooth_window,
+    smooth_window         = smooth_window,
     wet_doy               = wet_doy
   )
 
@@ -152,11 +160,16 @@ calcCropCalendars <- function(lon                   = NULL,
   sowing_season <- sowing[["sowing_season"]]
 
   # Harvest date
-  # Harvest-rule hysteresis state carried from last year, packed into one integer
-  # (tclass 0-2 + 3*wet_found + 6*always_wet); NA on the first year / when off.
+  # Harvest-rule hysteresis state carried from last year, packed into one integer:
+  # harv_state = tclass(0-2) + 3*harv_hi, where harv_hi = rw1(0-2) + 6*aw(0-1) encodes the
+  # level wet-end EXISTENCE regime (rw1: 0 absent-DRY / 1 found / 2 absent-WET) and the
+  # always-wet flag (aw). The default path uses only aw (6*aw); the cc_regime path uses both.
+  # The aw bit is kept at /6 in both paths so the decode is path-independent. NA on the first
+  # year / when off.
   prev_tclass     <- if (is.na(prev_harv)) NA_integer_ else prev_harv %% 3L
-  prev_wet_found  <- if (is.na(prev_harv)) NA else as.logical((prev_harv %/% 3L) %% 2L)
-  prev_always_wet <- if (is.na(prev_harv)) NA else as.logical(prev_harv %/% 6L)
+  prev_hi         <- if (is.na(prev_harv)) NA_integer_ else prev_harv %/% 3L
+  prev_rw1        <- if (is.na(prev_hi)) NA_integer_ else prev_hi %% 3L
+  prev_always_wet <- if (is.na(prev_hi)) NA else as.logical(prev_hi %/% 6L)
 
   harvest_rule  <- calcHarvestRule(
     croppar      = crop_parameters,
@@ -165,8 +178,8 @@ calcCropCalendars <- function(lon                   = NULL,
     seasonality  = seasonality,
     daily_temp   = dtemp,
     prev_tclass      = prev_tclass,
-    harv_eps         = harv_eps,
-    harv_tmax_margin = harv_tmax_margin
+    harv_tmax_margin = harv_tmax_margin,
+    smooth_window    = smooth_window
   )
 
   harvest_vector <- calcHarvestDateVector(
@@ -180,10 +193,11 @@ calcCropCalendars <- function(lon                   = NULL,
     daily_prec        = dprec,
     daily_pet         = dpet,
     cross_min_duration = cross_min_duration,
-    cross_smooth_window = cross_smooth_window,
-    prev_wet_found    = prev_wet_found,
+    smooth_window      = smooth_window,
     prev_always_wet   = prev_always_wet,
-    harv_eps          = harv_eps
+    harv_ppet_eps     = harv_ppet_eps,
+    prev_rw1          = prev_rw1,
+    harv_exist_eps    = harv_exist_eps
   )
 
   harvest <- calcHarvestDate(
@@ -195,7 +209,8 @@ calcCropCalendars <- function(lon                   = NULL,
     seasonality   = seasonality,
     harvest_rule  = harvest_rule,
     hd_vector     = harvest_vector,
-    daily_temp    = dtemp
+    daily_temp    = dtemp,
+    smooth_window = smooth_window
   )
 
   harvest_day_rf  <- harvest[["hd_rf"]]
@@ -227,8 +242,7 @@ calcCropCalendars <- function(lon                   = NULL,
   # Unlike seas_type/wet_doy this is crop-DEPENDENT (thresholds are crop parameters),
   # so the driver keeps it per cell AND per crop.
   harv_state <- as.integer(attr(harvest_rule, "tclass") +
-                           3L * as.integer(attr(harvest_vector, "wet_found")) +
-                           6L * as.integer(attr(harvest_vector, "always_wet")))
+                           3L * as.integer(attr(harvest_vector, "harv_hi")))
 
   attr(pixel_df, "wet_doy")    <- wet_doy
   attr(pixel_df, "seas_type")  <- seasonality   # crop-independent; carried as prev_seas state

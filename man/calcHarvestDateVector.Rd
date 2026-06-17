@@ -15,10 +15,11 @@ calcHarvestDateVector(
   daily_prec = NULL,
   daily_pet = NULL,
   cross_min_duration = 1L,
-  cross_smooth_window = 0L,
-  prev_wet_found = NA,
+  smooth_window = 31L,
   prev_always_wet = NA,
-  harv_eps = 0
+  harv_ppet_eps = 0,
+  prev_rw1 = NA_integer_,
+  harv_exist_eps = 0
 )
 }
 \arguments{
@@ -56,22 +57,31 @@ per DOY (the \code{dpet} element from \code{calcClimatology}).}
 forwarded to \code{calcDoyCrossThreshold} for the wet-season-end and
 hot-day crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.}
 
-\item{cross_smooth_window}{Integer odd day-window for smoothing the crossing
-inputs only -- the hot-day \code{daily_temp} crossing, and \code{daily_prec} /
-\code{daily_pet} before the wet-season-end P/PET ratio. Default \code{0} = off.
-The reductions (\code{warmest_day}, driest-month P/PET) use the raw series.}
+\item{smooth_window}{Integer day-window for the daily-climatology smoothing -- the single
+global window applied to BOTH the crossing inputs (the hot-day \code{daily_temp} crossing,
+and \code{daily_prec} / \code{daily_pet} before the wet-season-end P/PET ratio) AND the
+reductions (\code{warmest_day}, driest-window P/PET, the \code{daily_ppet_diff} trend).
+Default 31 (odd). See \code{calcCropCalendars}.}
 
-\item{prev_wet_found, prev_always_wet}{Logical hysteresis state from last year (or
-\code{NA}): did a wet-season-end crossing exist, and was the cell always-wet
-(\code{min_ppet >= ppet_min})? Used only when \code{harv_eps > 0}. The resolved
-values are returned as \code{attr(., "wet_found")} / \code{attr(., "always_wet")}.}
+\item{prev_always_wet}{Logical hysteresis state from last year (or \code{NA}): was
+the cell always-wet (\code{min_ppet >= ppet_min})? Used only when
+\code{harv_ppet_eps > 0}. The resolved value is returned as
+\code{attr(., "always_wet")}.}
 
-\item{harv_eps}{Non-negative numeric (default 0 = off). Relative deadband for the
-wet-branch thresholds: it relaxes \code{ppet_ratio} (wet-season-end crossing
-existence) toward keeping \code{prev_wet_found}, and \code{ppet_min} (always-wet
-test) toward keeping \code{prev_always_wet}, so a grazing P/PET wobble no longer
-snaps \code{hd_wetseas} between a crossing date and the hd_last/hd_first fallback.
-Mirrors \code{seas_eps}.}
+\item{harv_ppet_eps}{Non-negative relative deadband (default 0 = off) on the
+always-wet test (\code{min_ppet} vs \code{ppet_min}): it relaxes \code{ppet_min}
+toward keeping \code{prev_always_wet}, so a grazing P/PET wobble no longer snaps
+\code{hd_wetseas} between \code{hd_last} and \code{hd_first}.}
+
+\item{prev_rw1}{Integer level wet-end EXISTENCE regime from last year (0 = absent-DRY,
+1 = found, 2 = absent-WET), or \code{NA}. Used only on the \code{cc_regime} path when
+\code{harv_exist_eps > 0}.}
+
+\item{harv_exist_eps}{Non-negative relative directional deadband (default 0 = off) on the
+wet-end EXISTENCE boundary (the \code{ppet_ratio} level crossing, \code{doy_wet1}). Leaving
+the absent-DRY regime needs the peak to clear \code{ppet_ratio * (1 + eps)}; leaving
+absent-WET needs the trough below \code{ppet_ratio * (1 - eps)}. Experimental, gated by
+\code{options(cc_regime = TRUE)}.}
 }
 \description{
 Harvest reasons are the events that can trigger the harvest

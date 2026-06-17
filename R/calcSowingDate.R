@@ -35,11 +35,11 @@
 #' @param cross_min_duration Integer minimum sustained-excursion length (days)
 #' forwarded to \code{calcDoyCrossThreshold} for the spring/fall temperature
 #' crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.
-#' @param cross_smooth_window Integer odd day-window for smoothing \code{daily_temp}
-#' before the spring/fall threshold crossings only (the coldest-month reductions use
-#' the raw series). Default \code{0} = off. The daily climatology is kept raw and the
-#' crossing input is conditioned here, so the smoothing does not affect the
-#' reductions or the 120-day wettest window.
+#' @param smooth_window Integer day-window for the daily-climatology smoothing -- the
+#' single global window applied to BOTH the threshold-crossing input (\code{daily_temp}
+#' smoothed before the spring/fall crossings) AND the daily reductions here (coldest-window
+#' mean and coldest/warmest anchor DOYs). Default 31 (odd). See \code{calcCropCalendars}. The raw
+#' daily climatology is still kept; this only sets the window the rules read it through.
 #' @param monthly_prec,monthly_pet Optional numeric vectors of length 12, the
 #' monthly precipitation and PET TOTALS (the \code{mprec} / \code{mpet} elements
 #' from \code{calcClimatology}). Used only as the bug-free monthly fallback for
@@ -67,16 +67,16 @@ calcSowingDate <- function(croppar,
                            wet_doy               = NULL,
                            monthly_prec          = NULL,
                            monthly_pet           = NULL,
-                           cross_smooth_window   = 0L
+                           smooth_window         = 31L
                            ) {
 
   # extract individual parameter names and values
   list2env(croppar, environment())  # 1-row data.frame: columns -> scalar params
 
   # Coldest-month temperature (coldest_t) and coldest-day anchor (coldest_doy).
-  # With the daily climatology these are the coldest 30-day window mean and its
-  # centre DOY: a daily mean is already a per-DOY 30-year mean (smoothed by
-  # cross_smooth_window), so the 30-day window reproduces the calendar-month coldness
+  # With the daily climatology these are the coldest smooth_window-day window mean and its
+  # centre DOY: a daily mean is already a per-DOY 30-year mean, so the smooth_window window
+  # reproduces the calendar-month coldness
   # continuously -- removing the ~30-day quantisation that made the warm-winter
   # sowing date and the spring-crossing anchor jump between adjacent climate windows.
   # When daily_temp is absent, fall back to the exact legacy monthly rule (the
@@ -84,9 +84,9 @@ calcSowingDate <- function(croppar,
   # monthly means onto the daily grid only for the threshold-crossing scans below
   # (the spring/fall crossings have no pure-monthly form).
   if (!is.null(daily_temp)) {
-    coldest_t   <- .coldestWindowMean(daily_temp)
-    coldest_doy <- .doyColdestWindow(daily_temp)
-    warmest_doy <- .doyWarmestWindow(daily_temp)
+    coldest_t   <- .coldestWindowMean(daily_temp, width = smooth_window)
+    coldest_doy <- .doyColdestWindow(daily_temp, width = smooth_window)
+    warmest_doy <- .doyWarmestWindow(daily_temp, width = smooth_window)
   } else {
     midday      <- c(15, 43, 74, 104, 135, 165, 196, 227, 257, 288, 318, 349)
     coldest_t   <- min(monthly_temp)
@@ -95,10 +95,9 @@ calcSowingDate <- function(croppar,
     daily_temp  <- .monthlyToDoy365(monthly_temp)
   }
 
-  # Smoothed daily temperature for the threshold crossings ONLY (the coldest-month
-  # reductions above use the raw daily_temp). The daily climatology is kept raw; this
-  # is where cross_smooth_window conditions the crossing input (0 = no-op).
-  daily_temp_x <- .smoothCycle(daily_temp, cross_smooth_window)
+  # Smoothed daily temperature for the threshold crossings. Same global smooth_window the
+  # coldest-window reductions above use, so crossing inputs and reductions share one window.
+  daily_temp_x <- .circRoll(daily_temp, smooth_window, "center", mean = TRUE)
 
   # Constrain first possible date for winter crop sowing
   earliest_sdate  <- ifelse(lat >= 0, initdate.sdatenh, initdate.sdatesh)
