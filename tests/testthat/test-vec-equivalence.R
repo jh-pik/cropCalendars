@@ -113,3 +113,101 @@ test_that("isWinterCrop guard cases return 0 (NA/0 start, NA lat, NA tcm)", {
 test_that("isWinterCrop is graceful on NA end (returns NA, the old scalar errored)", {
   expect_true(is.na(cropCalendars::isWinterCrop(100, NA, 0, 45)))
 })
+
+# ============================ PR-C: calcPHU / calcVrf ============================
+
+ref_calcPHU <- function(sdate, hdate, mdt, vern_factor = rep(1, 365), basetemp = 0,
+                        phen_model = "t") {
+  husum <- 0
+  if (is.na(sdate) | is.na(hdate) | sdate == 0 | hdate == 0) return(husum)
+  hdate <- ifelse(sdate < hdate, hdate, hdate + 365)
+  if (hdate <= 365) days_no_gp <- c(1:(sdate - 1), hdate:365)
+  if (hdate >  365) days_no_gp <- c((hdate - 365):(sdate - 1))
+  if (phen_model == "t") {
+    teff <- mdt - basetemp; teff[teff < 0] <- 0; teff[days_no_gp] <- 0
+    as.integer(sum(teff))
+  } else {
+    teff <- mdt - basetemp; teff[teff < 0] <- 0; teff <- teff * vern_factor
+    teff[days_no_gp] <- 0
+    as.integer(sum(teff)) * (-1L)
+  }
+}
+
+ref_calcVrf <- function(sdate, hdate, mdt, vd, vd_b = 0.2,
+                        tv1 = -4, tv2 = 3, tv3 = 10, tv4 = 17) {
+  veff <- array(0, 365); vrf <- array(1.0, 365)
+  for (k in 1:365) {
+    if      (mdt[k] >= tv1 && mdt[k] <  tv2) veff[k] <- (mdt[k] - tv1) / (tv2 - tv1)
+    else if (mdt[k] >= tv2 && mdt[k] <= tv3) veff[k] <- 1
+    else if (mdt[k] >  tv3 && mdt[k] <  tv4) veff[k] <- (tv4 - mdt[k]) / (tv4 - tv3)
+    else if (mdt[k] >= tv4)                  veff[k] <- 0
+    else if (mdt[k] <  tv1)                  veff[k] <- 0
+  }
+  veff[veff > 1] <- 1; veff[veff < 0] <- 0; veff <- c(veff, veff)
+  vdsum <- 0; k <- sdate; hd <- ifelse(sdate < hdate, hdate, hdate + 365)
+  while (vdsum < vd && k < hd) { vdsum <- vdsum + veff[k]; if (vdsum < vd) k <- k + 1 }
+  endday <- if (vdsum >= vd) k else Inf
+  vdsum <- 0
+  for (k in sdate:min(endday, hd)) {
+    vdsum <- vdsum + veff[k]
+    if (vdsum < (vd * vd_b)) vrf[ifelse(k > 365, k - 365, k)] <- 0
+    else vrf[ifelse(k > 365, k - 365, k)] <- max(0, min(1, (vdsum - vd * vd_b) / (vd - vd * vd_b)))
+  }
+  if (vd == 0) vrf <- rep(1, 365)
+  vrf
+}
+
+# ---- calcPHU ----
+
+test_that("calcPHU wrapper reproduces the original scalar (sdate != hdate, sdate,hdate > 1)", {
+  set.seed(424242)
+  for (i in 1:3000) {
+    sdate <- sample(2:365, 1); hdate <- sample(2:365, 1)
+    if (sdate == hdate) next
+    mdt <- runif(365, -20, 35); bt <- sample(0:8, 1); vrf <- runif(365, 0, 1)
+    expect_equal(cropCalendars::calcPHU(sdate, hdate, mdt, basetemp = bt, phen_model = "t"),
+                 ref_calcPHU(sdate, hdate, mdt, basetemp = bt, phen_model = "t"))
+    expect_equal(cropCalendars::calcPHU(sdate, hdate, mdt, vern_factor = vrf, basetemp = bt,
+                                        phen_model = "tv"),
+                 ref_calcPHU(sdate, hdate, mdt, vern_factor = vrf, basetemp = bt, phen_model = "tv"))
+  }
+})
+
+test_that("calcPHU corrects the two scalar edge bugs (matches the production vec core)", {
+  mdt <- rep(20, 365); bt <- 0    # every day warm, so a dropped day visibly changes the sum
+  # sdate == 1: old scalar dropped day 1; wrapper (= vec) includes it.
+  expect_equal(cropCalendars::calcPHU(1, 200, mdt, basetemp = bt),
+               .calc_phu_thermal_vec(1, 200, matrix(mdt, 1), bt))
+  expect_false(isTRUE(cropCalendars::calcPHU(1, 200, mdt, basetemp = bt) ==
+                      ref_calcPHU(1, 200, mdt, basetemp = bt)))
+  # sdate == hdate: wrapper (= vec) treats it as a full-year growing window.
+  expect_equal(cropCalendars::calcPHU(100, 100, mdt, basetemp = bt),
+               .calc_phu_thermal_vec(100, 100, matrix(mdt, 1), bt))
+  expect_false(isTRUE(cropCalendars::calcPHU(100, 100, mdt, basetemp = bt) ==
+                      ref_calcPHU(100, 100, mdt, basetemp = bt)))
+})
+
+test_that("calcPHU guards: NA / 0 sdate or hdate return 0; bad phen_model errors", {
+  expect_equal(cropCalendars::calcPHU(NA, 200, rep(10, 365)), 0L)
+  expect_equal(cropCalendars::calcPHU(100, 0, rep(10, 365)), 0L)
+  expect_error(cropCalendars::calcPHU(100, 200, rep(10, 365), phen_model = "tp"))
+})
+
+# ---- calcVrf ----
+
+test_that("calcVrf wrapper reproduces the original scalar over all inputs (incl. edges)", {
+  set.seed(2024)
+  for (i in 1:3000) {
+    sdate <- sample(1:365, 1); hdate <- sample(1:365, 1)
+    mdt <- runif(365, -20, 35); vd <- sample(0:70, 1)
+    # as.numeric strips attributes: the wrapper returns a plain vector while the old scalar
+    # returned a 1-D array (array() carries a dim attribute). Values agree to ~1e-14 (the
+    # cumsum core reorders the summation), well within the default tolerance.
+    expect_equal(as.numeric(cropCalendars::calcVrf(sdate, hdate, mdt, vd)),
+                 as.numeric(ref_calcVrf(sdate, hdate, mdt, vd)))
+  }
+})
+
+test_that("calcVrf with vd = 0 returns all ones", {
+  expect_equal(cropCalendars::calcVrf(100, 300, runif(365, -10, 20), vd = 0), rep(1, 365))
+})

@@ -51,6 +51,21 @@
   Only this reduction needed normalising — the others are means/ratios/argmin compared to
   absolute thresholds, whose units don't scale with the window.
 
+### Deduplicate scalar vs. vectorized rule helpers (PR-C)
+- **`calcVrf` and `calcPHU` are now thin wrappers over their vectorized cores**
+  (`.build_vrf_mat`, `.calc_phu_thermal_vec` / `.calc_phu_vernal_vec`), completing the
+  scalar/`_vec` consolidation. The PHU pipeline already ran only the vectorized forms.
+  `calcVrf` is equivalent to the old scalar to ~1e-14 (the cumsum core reorders the
+  summation) and now returns a plain vector instead of a 1-D array. `calcPHU` matches the
+  old scalar everywhere except two edge bugs the vectorized core (and therefore the pipeline)
+  already fixed: at `sdate == 1` the old code dropped day 1 from the growing period, and at
+  `sdate == hdate` it dropped ~2 days; both are handled correctly now. `calcPHU` also errors
+  (rather than printing) on an unsupported `phen_model`.
+- **Equivalence harness extended** (`tests/testthat/test-vec-equivalence.R`): adds the
+  original `calcPHU`/`calcVrf` bodies as ground truth and fuzzes ~12 000 more inputs —
+  `calcPHU` asserted bit-identical off the two edges (and asserted to *correct* them on the
+  edges), `calcVrf` to numeric tolerance across all `sdate`/`hdate` including the edges.
+
 ### Deduplicate scalar vs. vectorized rule helpers (PR-A)
 - **`calcVd` and `isWinterCrop` are now thin wrappers over their vectorized cores**
   (`.calc_vd_vec`, `.wintercrop_vec`). The PHU pipeline already ran only the vectorized
