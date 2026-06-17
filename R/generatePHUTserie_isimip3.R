@@ -347,7 +347,9 @@ get.isimip.tas <- function(GCM, SC, SY, EY, ncells) {
 # ------------------------------------ #
 # Unexported helpers: vectorized PHU computation
 
-# Monthly mean temperatures: NCELLS x 365 matrix -> NCELLS x 12 matrix
+# Monthly mean temperatures: NCELLS x 365 matrix -> NCELLS x 12 matrix.
+# Fixed (non-leap) calendar-month day boundaries sday..eday; each output column is the
+# row-wise mean of that month's day block. Vectorised twin of .monthlyFromDaily(.,"mean").
 .monthly_temps_vec <- function(temp_mat) {
   sday <- c(  1, 32, 60,  91, 121, 152, 182, 213, 244, 274, 305, 335)
   eday <- c( 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365)
@@ -356,7 +358,13 @@ get.isimip.tas <- function(GCM, SC, SY, EY, ncells) {
   m_mat
 }
 
-# Vernalization days required: vectorized calcVd across all cells
+# Vernalization days required (per cell): vectorised twin of calcVd, the canonical
+# reference. Per row: rank the 12 monthly means coldest-first (order), keep the
+# `max.vern.months` coldest, and give each a vernalization-day credit that is piecewise
+# in its temperature -- the full max_per_m below tv2 (vern optimum floor), 0 above tv3
+# (too warm to vernalize), a linear ramp down between -- then sum the credits and round.
+# (Unlike the scalar, which always picks the 5 coldest regardless of max.vern.months, this
+# keeps exactly max.vern.months; identical at the default 5 used in production.)
 .calc_vd_vec <- function(mtemp_mat, max.vern.days, max.vern.months = 5L, tv2, tv3) {
   nc         <- nrow(mtemp_mat)
   max_per_m  <- max.vern.days / max.vern.months
@@ -370,7 +378,13 @@ get.isimip.tas <- function(GCM, SC, SY, EY, ncells) {
   round(rowSums(days_m))
 }
 
-# Winter crop classification: vectorized isWinterCrop across all cells
+# Winter-crop classification (per cell): vectorised twin of isWinterCrop (Portmann 2010,
+# with tcm <= 7 not 6). growp is the circular sowing->harvest length (wrapping the year).
+# A season is winter crop (1) iff it is long (growp >= 150 d), its coldest month is
+# cold-but-not-killing (tcm in [-10, 7]), AND it overwinters: in the N hemisphere it
+# crosses the year boundary (sdate + growp > 365); in the S hemisphere it straddles
+# mid-winter (sows before and harvests after DOY 182). `valid` masks the NA/sdate<=0 rows
+# the scalar guards with its outer `if` (returns 0 there). Returns 0/1.
 .wintercrop_vec <- function(sdate_v, hdate_v, tcm_v, lat_v) {
   growp    <- ifelse(sdate_v <= hdate_v, hdate_v - sdate_v, 365L + hdate_v - sdate_v)
   valid    <- !is.na(sdate_v) & sdate_v > 0L & !is.na(lat_v) & !is.na(tcm_v)
@@ -380,7 +394,12 @@ get.isimip.tas <- function(GCM, SC, SY, EY, ncells) {
   as.integer(nh | sh)
 }
 
-# Shared cumsum-based PHU core (used by both thermal and vernal models)
+# Shared window-sum core for the PHU models. Given a row-wise cumulative sum of daily
+# effective thermal units (cumteff[, d] = sum of teff over days 1..d), return the sum over
+# the growing window [sdate, hdate) WITHOUT a per-cell loop, as a difference of cumsums:
+#   no wrap (sdate < hdate):  cum(hdate-1) - cum(sdate-1)            = sum[sdate .. hdate-1]
+#   wrap    (hdate <= sdate): cum(365) - cum(sdate-1)  +  cum(hdate-1)  (tail + head of year)
+# The pmin/pmax/<1 guards keep the column index in 1..365 and treat "sdate-1 = 0" as cum 0.
 .phu_cumsum <- function(sdate_v, hdate_v, cumteff) {
   nc      <- nrow(cumteff)
   idx     <- seq_len(nc)
@@ -395,21 +414,35 @@ get.isimip.tas <- function(GCM, SC, SY, EY, ncells) {
   ifelse(no_wrap, cum_hd1 - cum_sd1, cum_365 - cum_sd1 + cum_hd1)
 }
 
-# PHU: thermal model, vectorized
+# PHU thermal model (phen_model "t"), vectorised twin of calcPHU: daily effective thermal
+# units teff = max(T - basetemp, 0), cumulated, then summed over the growing window via
+# .phu_cumsum. Positive heat-unit sum.
 .calc_phu_thermal_vec <- function(sdate_v, hdate_v, temp_mat, basetemp) {
   teff    <- pmax(temp_mat - basetemp, 0)
   cumteff <- t(apply(teff, 1, cumsum))
   as.integer(.phu_cumsum(sdate_v, hdate_v, cumteff))
 }
 
-# PHU: vernal-thermal model, vectorized (returns negative to flag vernal model)
+# PHU vernal-thermal model (phen_model "tv"), vectorised twin of calcPHU: as the thermal
+# model but teff is scaled by the daily vernalization reduction factor (vrf_mat) before
+# accumulation. Returned NEGATED -- LPJmL reads a negative PHU as "this crop needs
+# vernalization".
 .calc_phu_vernal_vec <- function(sdate_v, hdate_v, temp_mat, vrf_mat, basetemp) {
   teff    <- pmax(temp_mat - basetemp, 0) * vrf_mat
   cumteff <- t(apply(teff, 1, cumsum))
   as.integer(-.phu_cumsum(sdate_v, hdate_v, cumteff))
 }
 
-# Build vernalization reduction factor matrix (NCELLS x 365)
+# Vernalization reduction factor matrix (NCELLS x 365), vectorised twin of calcVrf.
+# Per day, vernalization EFFECTIVENESS veff(T) is a trapezoid in temperature: 0 below tv1,
+# ramping up to 1 across [tv1,tv2], a plateau of 1 on [tv2,tv3], ramping back to 0 across
+# [tv3,tv4], 0 above. The year is doubled (730 d) so a season wrapping past Dec 31 stays
+# contiguous, and veff is cumulated once per row. Then per cell (the loop): accumulate veff
+# from sdate, find the day the required vernalization vd is reached, and set the reduction
+# factor vrf along the way -- 0 until vd_b (20%) of vd is banked, then a linear ramp to 1 at
+# full vd (so growth is throttled until enough cold has accrued). vd <= 0 leaves vrf = 1
+# (no requirement). The cumsum + difference (cumveff730[k] - cum0) replaces the scalar's
+# day-by-day running sum; results match.
 .build_vrf_mat <- function(sdate_v, hdate_v, temp_mat, vd_vec,
                            vd_b = 0.2, tv1, tv2, tv3, tv4) {
   nc       <- nrow(temp_mat)

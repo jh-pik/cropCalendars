@@ -51,6 +51,22 @@
   Only this reduction needed normalising — the others are means/ratios/argmin compared to
   absolute thresholds, whose units don't scale with the window.
 
+### Deduplicate scalar vs. vectorized rule helpers (PR-A)
+- **`calcVd` and `isWinterCrop` are now thin wrappers over their vectorized cores**
+  (`.calc_vd_vec`, `.wintercrop_vec`). The PHU pipeline already ran only the vectorized
+  forms; the public scalars carried a second, drift-prone copy of the same vernalization-day
+  and winter-crop rules. Each scalar now calls its `_vec` core with a single row, so there is
+  one source of truth per rule. Public signatures are unchanged. `isWinterCrop` now returns NA
+  (not an error) when `end` is NA, and `calcVd` keeps exactly `max.vern.months` coldest months
+  (the scalar always took 5 regardless) — identical at the production default of 5.
+- **Equivalence harness** (`tests/testthat/test-vec-equivalence.R`): embeds the original
+  scalar bodies as ground truth and fuzzes ~9 000 inputs (plus rule-boundary and NA-guard
+  cases), asserting the wrappers reproduce them bit-for-bit. This is also the scaffold for
+  PR-C (`calcVrf`/`calcPHU`, whose control flow differs from their `_vec` cores).
+- **Vectorized helpers documented.** Each `_vec`/cumsum helper in
+  `generatePHUTserie_isimip3.R` gained a header comment explaining its logic against the
+  readable scalar form (the matrix `order`/`cumsum`/`ifelse` tricks that replace the loops).
+
 ### Daily-climatology rule port + ring slimming
 - **All extremum reductions moved from the 12 calendar months to daily 30-day windows.**
   The coldest/warmest-month temperature (`calcSeasonality` min-temp, `calcSowingDate`
