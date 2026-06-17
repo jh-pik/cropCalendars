@@ -211,3 +211,46 @@ test_that("calcVrf wrapper reproduces the original scalar over all inputs (incl.
 test_that("calcVrf with vd = 0 returns all ones", {
   expect_equal(cropCalendars::calcVrf(100, 300, runif(365, -10, 20), vd = 0), rep(1, 365))
 })
+
+# ============================ PR-B: .monthlyFromDaily (vector + matrix) ============================
+
+# Original .monthly_temps_vec body (matrix path ground truth, now removed from the package).
+ref_monthly_temps_vec <- function(temp_mat) {
+  sday <- c(1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335)
+  eday <- c(31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365)
+  m_mat <- matrix(0.0, nrow(temp_mat), 12L)
+  for (m in 1:12) m_mat[, m] <- rowMeans(temp_mat[, sday[m]:eday[m]])
+  m_mat
+}
+# Original vector .monthlyFromDaily body (per-pixel path ground truth).
+ref_mfd_vec <- function(daily, agg = c("mean", "sum")) {
+  agg   <- match.arg(agg)
+  ndays <- c(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+  end   <- cumsum(ndays); start <- end - ndays + 1L
+  f     <- if (agg == "mean") mean else sum
+  vapply(seq_len(12L), function(m) f(daily[start[m]:end[m]]), numeric(1))
+}
+
+test_that(".monthlyFromDaily vector path is unchanged (mean and sum)", {
+  set.seed(808)
+  for (i in 1:500) {
+    v <- runif(365, -15, 35); p <- rgamma(365, 1, 0.2)
+    expect_equal(.monthlyFromDaily(v, "mean"), ref_mfd_vec(v, "mean"))
+    expect_equal(.monthlyFromDaily(p, "sum"),  ref_mfd_vec(p, "sum"))
+  }
+  expect_null(dim(.monthlyFromDaily(runif(365), "mean")))   # vector in -> vector out
+})
+
+test_that(".monthlyFromDaily matrix path reproduces the removed .monthly_temps_vec", {
+  set.seed(909)
+  for (i in 1:200) {
+    M <- matrix(runif(sample(2:40, 1) * 365, -20, 35), ncol = 365)  # ref needs >=2 rows
+    expect_equal(.monthlyFromDaily(M, "mean"), ref_monthly_temps_vec(M))
+  }
+  # 1-row matrix: ref errors (original lacked drop=FALSE); the generalized helper handles it
+  # and keeps the [1 x 12] shape. Check against a direct row-wise mean.
+  M1  <- matrix(runif(365, -20, 35), 1, 365)
+  end <- cumsum(c(31,28,31,30,31,30,31,31,30,31,30,31)); start <- end - c(31,28,31,30,31,30,31,31,30,31,30,31) + 1L
+  exp1 <- matrix(vapply(seq_len(12L), function(j) mean(M1[1, start[j]:end[j]]), numeric(1)), 1, 12)
+  expect_equal(.monthlyFromDaily(M1, "mean"), exp1)
+})

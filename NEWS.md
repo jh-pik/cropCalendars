@@ -51,6 +51,15 @@
   Only this reduction needed normalising — the others are means/ratios/argmin compared to
   absolute thresholds, whose units don't scale with the window.
 
+### Deduplicate scalar vs. vectorized rule helpers (PR-B)
+- **`.monthlyFromDaily` now subsumes `.monthly_temps_vec`.** The two did the same calendar-month
+  aggregation over identical (non-leap) month boundaries — one for a single 365-day vector, the
+  other row-wise over an `[ncells x 365]` matrix. `.monthlyFromDaily(daily, agg)` now accepts
+  either (vector in → length-12 vector out; matrix in → `[ncells x 12]` out) via `rowMeans`/
+  `rowSums`, and `.monthly_temps_vec` is removed; the gridded PHU path calls
+  `.monthlyFromDaily(tas_mean_day, "mean")`. Vector results are bit-identical; the matrix path
+  reproduces the old helper exactly (verified, diff 0).
+
 ### Deduplicate scalar vs. vectorized rule helpers (PR-C)
 - **`calcVrf` and `calcPHU` are now thin wrappers over their vectorized cores**
   (`.build_vrf_mat`, `.calc_phu_thermal_vec` / `.calc_phu_vernal_vec`), completing the

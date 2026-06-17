@@ -137,7 +137,7 @@ generatePHUTserie_isimip3 <- function(
 
     # --------------------------------------------------#
     # Monthly temps (NCELLS x 12) ----
-    mtemp_mat <- .monthly_temps_vec(tas_mean_day)
+    mtemp_mat <- .monthlyFromDaily(tas_mean_day, "mean")
 
     # --------------------------------------------------#
     # PHU computation (vectorized across all cells) ----
@@ -346,17 +346,6 @@ get.isimip.tas <- function(GCM, SC, SY, EY, ncells) {
 
 # ------------------------------------ #
 # Unexported helpers: vectorized PHU computation
-
-# Monthly mean temperatures: NCELLS x 365 matrix -> NCELLS x 12 matrix.
-# Fixed (non-leap) calendar-month day boundaries sday..eday; each output column is the
-# row-wise mean of that month's day block. Vectorised twin of .monthlyFromDaily(.,"mean").
-.monthly_temps_vec <- function(temp_mat) {
-  sday <- c(  1, 32, 60,  91, 121, 152, 182, 213, 244, 274, 305, 335)
-  eday <- c( 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365)
-  m_mat <- matrix(0.0, nrow(temp_mat), 12L)
-  for (m in 1:12) m_mat[, m] <- rowMeans(temp_mat[, sday[m]:eday[m]])
-  m_mat
-}
 
 # Vernalization days required (per cell): vectorised twin of calcVd, the canonical
 # reference. Per row: rank the 12 monthly means coldest-first (order), keep the

@@ -52,17 +52,25 @@
 
 # Reconstruct the 12 calendar-month values from a 365-day DOY climatology: the
 # monthly mean (temperature) or monthly sum (precipitation) over each month's DOYs.
-# This lets the sliding ring carry only the daily climatology and build the monthly
-# seasonality stats downstream. Exact for every month except February: the daily
-# climatology folds Feb 29 onto DOY 59, so the per-year leap structure is not
-# recoverable and Feb differs by < ~1 % (immaterial to the seasonality CV classifier,
-# which also has the seas_eps deadband).
+# Accepts a single 365-day vector (-> length-12 vector) OR an [ncells x 365] matrix
+# (-> [ncells x 12] matrix, aggregated row-wise) -- the per-pixel path passes a vector,
+# the gridded PHU path (generatePHUTserie_isimip3) a matrix. This lets the sliding ring
+# carry only the daily climatology and build the monthly seasonality stats downstream.
+# Exact for every month except February: the daily climatology folds Feb 29 onto DOY 59,
+# so the per-year leap structure is not recoverable and Feb differs by < ~1 % (immaterial
+# to the seasonality CV classifier, which also has the seas_eps deadband).
 .monthlyFromDaily <- function(daily, agg = c("mean", "sum")) {
-  agg   <- match.arg(agg)
-  ndays <- c(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)   # 365-day calendar
-  end   <- cumsum(ndays); start <- end - ndays + 1L
-  f     <- if (agg == "mean") mean else sum
-  vapply(seq_len(12L), function(m) f(daily[start[m]:end[m]]), numeric(1))
+  agg    <- match.arg(agg)
+  ndays  <- c(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)   # 365-day calendar
+  end    <- cumsum(ndays); start <- end - ndays + 1L
+  is_mat <- !is.null(dim(daily))
+  m      <- if (is_mat) daily else matrix(daily, nrow = 1L)      # [ncells x 365]
+  aggf   <- if (agg == "mean") rowMeans else rowSums
+  out    <- vapply(seq_len(12L),
+                   function(j) aggf(m[, start[j]:end[j], drop = FALSE]),
+                   numeric(nrow(m)))
+  out    <- matrix(out, nrow = nrow(m), ncol = 12L)
+  if (is_mat) out else out[1, ]                                  # vector in -> vector out
 }
 
 # Mean of the warmest `width`-day window (daily analogue of max(monthly_temp)).
