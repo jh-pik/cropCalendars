@@ -81,12 +81,11 @@
   .doyWarmestWindow(-daily_temp, width)
 }
 
-# Driest `width`-day-window P/PET (daily analogue of min(monthly_ppet)): the minimum
-# over DOY of the spike-free ratio-of-sums (Sum P / Sum PET). Position is irrelevant
-# (the minimum is over all windows); ratio of sums == ratio of means, so no /width.
-.driestWindowPpet <- function(daily_prec, daily_pet, width = 30L) {
-  min(.circRoll(daily_prec, width) / pmax(.circRoll(daily_pet, width), 1e-6))
-}
+# Daily analogue of min(monthly_ppet) -- the always-wet aridity floor -- is just
+# min(daily_ppet) at the call site (calcHarvestDateVector): under the unified
+# smooth_window that minimum is anchor-invariant and bit-identical to the driest
+# smooth_window-day window's Sum P / Sum PET, so it needs no separate helper and is
+# the SAME series the wet-end crossing reads. (Former .driestWindowPpet, removed.)
 
 # Daily analogue of mppet_diff (= mppet[m] - mppet[m+1], the month-over-month
 # moisture trend; > 0 means the next month is drier). Built exactly as the monthly

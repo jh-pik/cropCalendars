@@ -33,8 +33,18 @@
   threshold-crossing inputs used a tunable 15-day `.smoothCycle` while the extremum/driest
   reductions used a structural 30-day window — two windows on the same daily climatology.
   They are unified: `smooth_window` now drives the crossing smoothing AND the
-  `.warmestWindowMean`/`.coldestWindowMean`/`.doy*Window`/`.driestWindowPpet`/`.dailyPpetDiff`
-  reductions. At 30 the reductions are unchanged (already 30); the crossings move 15→30.
+  `.warmestWindowMean`/`.coldestWindowMean`/`.doy*Window`/`.dailyPpetDiff` reductions (and the
+  always-wet `min(daily_ppet)` floor; see below). At 30 the reductions are unchanged (already
+  30); the crossings move 15→30.
+- **Always-wet floor and wet-end crossing share one P/PET series.** The always-wet aridity
+  test now reads `min_ppet <- min(daily_ppet)` — the minimum of the very curve the wet-end
+  existence/level crossing (`doy_wet1`) tests against `ppet_ratio`. Under the unified
+  `smooth_window` this is bit-identical to the old separate `.driestWindowPpet` (the per-cycle
+  minimum is anchor-invariant and ratio-of-sums == ratio-of-means), so it is an exact no-op for
+  the default path but makes `ppet_min` and `ppet_ratio` compare against the SAME curve, closing
+  the former `ppet_min`/`ppet_ratio` dead-zone for free. The `.driestWindowPpet` helper and the
+  now-vacuous `cc_harmonize_minppet` toggle are removed. (The toggle's earlier +40% regression
+  was a 15-vs-30-day window mismatch, gone once the two windows were unified.)
 - **`.dailyPpetDiff` normalised to a per-30-day rate** (`× 30/lag`): the `doy_wet2`
   moisture-trend threshold `ppet_ratio_diff` is calibrated as Δ(P/PET) per 30 days, so the
   diff is rescaled to that horizon and stays valid for any `smooth_window` (no-op at 30).

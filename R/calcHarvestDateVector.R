@@ -147,18 +147,18 @@ calcHarvestDateVector <- function(croppar,
   # terminal water stress at the first valid one (a sub-minimum wet-end wraps to next year,
   # see the hd_wetseas branch). wet_ends is assembled inside that branch (the cc_regime path
   # may re-detect the crossings at deadbanded thresholds first).
-  # If does not find harvest date and it is always high rainfall. Default: the
-  # .driestWindowPpet over the smooth_window window (continuous; no month quantisation),
-  # else the calendar-month minimum. cc_harmonize_minppet keys the always-wet test instead
-  # to min(daily_ppet) -- the SAME variable as the wet-end EXISTENCE crossing -- closing the
-  # ppet_min/ppet_ratio dead-zone. That only pays off if daily_ppet is well smoothed:
-  # harmonizing at smooth_window=15 regressed +40% on Uruguay+France (the 15-day cycle is
-  # too noisy); at smooth_window=30 min(daily_ppet) ~ the driest-window magnitude AND
-  # consistent with the crossing (toggle default off; under A/B).
-  min_ppet <- if (!is.null(daily_prec) && !is.null(daily_pet)) {
-    if (isTRUE(getOption("cc_harmonize_minppet", FALSE))) min(daily_ppet)
-    else .driestWindowPpet(daily_prec, daily_pet, width = smooth_window)
-  } else min(monthly_ppet)
+  # Always-wet aridity floor, for the no-wet-end branch. It is the minimum over the year
+  # of the SAME smoothed daily P/PET series the wet-end existence/level crossing (doy_wet1)
+  # reads -- min(daily_ppet) -- so the always-wet test (min_ppet vs ppet_min) and the
+  # doy_wet1 crossing (daily_ppet vs ppet_ratio) compare against ONE curve, closing the
+  # former ppet_min/ppet_ratio dead-zone for free. Under the unified smooth_window this is
+  # bit-identical to the driest smooth_window-day window's Sum P / Sum PET (the min over DOY
+  # is anchor-invariant, and ratio-of-sums == ratio-of-means), so it keeps the continuous,
+  # month-quantisation-free magnitude that the old separate .driestWindowPpet provided. (The
+  # earlier harmonize regression was a 15-vs-30-day window mismatch -- gone now that
+  # doy_wet1 and this share smooth_window.) Daily series absent -> the calendar-month minimum.
+  min_ppet <- if (!is.null(daily_prec) && !is.null(daily_pet)) min(daily_ppet)
+              else min(monthly_ppet)
   # Escape harvest for a found wet season: wrap a wet-end to next year if its escape
   # harvest would be SUB-MINIMUM (wet_end + rphase < hd_first), not only if strictly
   # before sowing. A wet-end resolving to a sub-minimum season is the tail of the PREVIOUS
