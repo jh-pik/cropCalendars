@@ -62,25 +62,6 @@ seqDates <- function(start_date = "1980-01-01",
   )
 }
 
-# Check if date is 29th February
-is29Feb <- function(date = "1980-01-01"
-                    ) {
-  day <- format(as.Date(date), "%d")
-  mon <- format(as.Date(date), "%m")
-
-  return(paste(mon, day) == "02 29")
-}
-
-# Convert day-of-the-year (DOY) to date "YYYY-MM-DD"
-doy_to_date <- function(doy  = NULL,
-                        year = NULL
-                        ) {
-  if (length(doy) != length(year)) stop("doy and year have different length")
-
-  date <- strptime(paste(year, doy), format = "%Y %j")
-  return(date)
-}
-
 # Convert date "YYYY-MM-DD" to day-of-the-year (DOY)
 date_to_doy <- function(date       = "2010-01-29",
                         skip_feb29 = TRUE
