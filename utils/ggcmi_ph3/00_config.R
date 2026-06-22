@@ -117,6 +117,16 @@ harv_ppet_eps     <- 0         # RETIRED/ignored (was always-wet test deadband)
 harv_exist_eps    <- 0         # superseded by the cross_min_area Schmitt (cc_regime path off)
 harv_tmax_margin  <- 1         # harvest-rule temp_max threshold deadband (deg C; 0 = off) -- thermal-class thermostat
 
+# Winter-regime sowing thermostat (winter-type / Winter_Wheat only). The winter regime is classified
+# warm / mild / cold by two coldest_t thresholds -- the warm boundary (basetemp.low) and the cold
+# boundary (-10 C) -- and each regime picks a different autumn-sowing anchor. When coldest_t grazes
+# either boundary the sowing flips ~half a year between adjacent years (the dominant winter-wheat
+# sowing-flicker mode; a replay cell at Quebec -72.25/45.25 toggles 264<->107 on a 0.2 deg C wobble at
+# the -10 boundary). The 1 deg C deadband (mirroring seas_mtemp_margin / harv_tmax_margin) carries last
+# year's regime and relaxes BOTH boundaries toward it (2*margin = 2 deg C sticky band each), latching
+# the cell into one regime. Enabled.
+winter_margin <- 1             # winter-regime (basetemp.low & -10 C) sowing threshold deadband (deg C; 0 = off)
+
 climate_dirs  <- sub("/+$", "", strsplit(.settings$CLIMATE_DIR, ":")[[1]])  # search list
 climate_dir   <- climate_dirs[1]                                            # legacy (stage 01a)
 isimip3b.path <- .settings$ISIMIP3B_PATH # .clm climate

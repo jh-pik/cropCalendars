@@ -23,7 +23,9 @@ calcCropCalendars(
   prev_harv = NA_integer_,
   harv_tmax_margin = 0,
   harv_ppet_eps = 0,
-  harv_exist_eps = 0
+  harv_exist_eps = 0,
+  prev_winter = NA_integer_,
+  winter_margin = 0
 )
 }
 \arguments{
@@ -109,6 +111,16 @@ the no-wet-end \code{hd_last}/\code{hd_first} decision is now made by the persis
 two-tier rule (wet-near gate at \code{ppet_ratio}, then the \code{ppet_min} floor) in
 \code{calcHarvestDateVector}, so there is no \code{min_ppet} graze to deadband. Kept in the
 signature only so existing callers do not error.}
+
+\item{prev_winter}{Integer winter regime last year (1 warm / 0 mild / -1 cold, or \code{NA}),
+forwarded to \code{calcSowingDate} for hysteresis on both winter-regime boundaries. Like the harvest
+state this is crop-DEPENDENT (the warm/cold/mild branch is gated on the crop's seasonality), so the
+caller carries it per cell AND per crop. The resolved regime is returned as
+\code{attr(., "winter_regime")}. Only winter-type crops act on it.}
+
+\item{winter_margin}{Absolute deadband (deg C, default 0 = off) on the two winter-regime thresholds,
+forwarded to \code{calcSowingDate}. Suppresses the ~half-year warm<->mild / autumn<->spring sowing
+flips when \code{coldest_t} grazes a boundary. See \code{?calcSowingDate}.}
 }
 \description{
 Wrapper function calling sub-functions to

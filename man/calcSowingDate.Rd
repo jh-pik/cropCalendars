@@ -19,7 +19,9 @@ calcSowingDate(
   wet_doy = NULL,
   monthly_prec = NULL,
   monthly_pet = NULL,
-  smooth_window = 31L
+  smooth_window = 31L,
+  prev_winter = NA_integer_,
+  winter_margin = 0
 )
 }
 \arguments{
@@ -86,6 +88,17 @@ single global window applied to BOTH the threshold-crossing input (\code{daily_t
 smoothed before the spring/fall crossings) AND the daily reductions here (coldest-window
 mean and coldest/warmest anchor DOYs). Default 31 (odd). See \code{calcCropCalendars}. The raw
 daily climatology is still kept; this only sets the window the rules read it through.}
+
+\item{prev_winter}{Integer winter regime chosen last year (1 = warm, 0 = mild, -1 = cold), or
+\code{NA} (default). Used only when \code{winter_margin > 0} to make BOTH winter-regime boundaries
+(\code{basetemp.low} and \eqn{-10}\,°C) hysteretic. Returned as \code{attr(., "winter_regime")} for
+the caller to carry forward. Only winter-type (\code{WTYP_CALC_SDATE}) crops act on it.}
+
+\item{winter_margin}{Absolute deadband (deg C, default 0 = off) on the two winter-regime thresholds
+(warm boundary \code{basetemp.low}, cold boundary \eqn{-10}). With a prior regime, each boundary
+relaxes toward last year's regime so the regime is sticky within a \code{2 * winter_margin} band,
+suppressing the ~half-year autumn<->spring / warm<->mild sowing flips when \code{coldest_t} grazes a
+boundary. Mirrors \code{seas_mtemp_margin} / \code{harv_tmax_margin}.}
 }
 \description{
 Calculate sowing date (Waha et al., 2012)

@@ -52,6 +52,15 @@
 #' \code{calcDoyWetMonth} result). When supplied it is used directly in the
 #' PREC/PRECTEMP spring-sowing branch, so the caller (\code{calcCropCalendars}) can
 #' compute it once per cell instead of twice. \code{NULL} (default) recomputes it.
+#' @param prev_winter Integer winter regime chosen last year (1 = warm, 0 = mild, -1 = cold), or
+#' \code{NA} (default). Used only when \code{winter_margin > 0} to make BOTH winter-regime boundaries
+#' (\code{basetemp.low} and \eqn{-10}\,°C) hysteretic. Returned as \code{attr(., "winter_regime")} for
+#' the caller to carry forward. Only winter-type (\code{WTYP_CALC_SDATE}) crops act on it.
+#' @param winter_margin Absolute deadband (deg C, default 0 = off) on the two winter-regime thresholds
+#' (warm boundary \code{basetemp.low}, cold boundary \eqn{-10}). With a prior regime, each boundary
+#' relaxes toward last year's regime so the regime is sticky within a \code{2 * winter_margin} band,
+#' suppressing the ~half-year autumn<->spring / warm<->mild sowing flips when \code{coldest_t} grazes a
+#' boundary. Mirrors \code{seas_mtemp_margin} / \code{harv_tmax_margin}.
 #' @export
 calcSowingDate <- function(croppar,
                            monthly_temp,
@@ -67,7 +76,9 @@ calcSowingDate <- function(croppar,
                            wet_doy               = NULL,
                            monthly_prec          = NULL,
                            monthly_pet           = NULL,
-                           smooth_window         = 31L
+                           smooth_window         = 31L,
+                           prev_winter           = NA_integer_,
+                           winter_margin         = 0
                            ) {
 
   # extract individual parameter names and values
@@ -105,19 +116,35 @@ calcSowingDate <- function(croppar,
   DEFAULT_DOY     <- ifelse(lat >= 0, 1, 182)
   DEFAULT_MONTH   <- 0
 
+  # Winter-regime classification (warm / mild / cold) with optional hysteresis on BOTH boundaries. The
+  # two thresholds each pick a different autumn-sowing anchor, so when coldest_t grazes either boundary
+  # the sowing date jumps between adjacent years -- the dominant winter-wheat sowing-flicker mode:
+  #   * warm boundary (coldest_t > basetemp.low): warm -> coldest_doy-75, mild -> temp_fall down-crossing
+  #   * cold boundary (coldest_t < -10):          cold -> -9999 (spring fallback), mild -> down-crossing
+  # With winter_margin > 0 and last year's regime (prev_winter: 1 warm / 0 mild / -1 cold), each boundary
+  # relaxes TOWARD the previous regime (mirroring seas_mtemp_margin / harv_tmax_margin): the regime you
+  # were in stays sticky unless coldest_t moves a full margin past its edge, so each band is 2*margin wide.
+  warm_thr <- basetemp.low
+  cold_thr <- -10
+  if (winter_margin > 0 && !is.na(prev_winter)) {
+    warm_thr <- if (prev_winter >=  1L) basetemp.low - winter_margin else basetemp.low + winter_margin
+    cold_thr <- if (prev_winter <= -1L) -10          + winter_margin else -10          - winter_margin
+  }
+  winter_is_temp <- seasonality %in% c("TEMP", "TEMPPREC", "PRECTEMP", "PREC")
+
   # What type of winter is it?
-  if ((coldest_t > basetemp.low) &
-      (seasonality %in% c("TEMP", "TEMPPREC", "PRECTEMP", "PREC"))) {
+  if ((coldest_t > warm_thr) & winter_is_temp) {
     # "Warm winter" (allowing non-vernalizing winter-sown crops)
     # sowing 2.5 months before the coldest day
     # it seems a good approximation for both India and South US)
     coldestday     <- coldest_doy
     firstwinterdoy <- ifelse(coldestday-75<=0, coldestday-75+365, coldestday-75)
+    winter_regime  <- 1L
 
-  } else if ((coldest_t < -10) &
-             (seasonality %in% c("TEMP", "TEMPPREC", "PRECTEMP", "PREC"))) {
+  } else if ((coldest_t < cold_thr) & winter_is_temp) {
     # "Cold winter" (winter too harsh for winter crops, only spring sowing possible)
     firstwinterdoy <- -9999
+    winter_regime  <- -1L
 
   } else {
     # "Mild winter" (allowing vernalizing crops). Anchor the autumn down-crossing scan
@@ -129,6 +156,7 @@ calcSowingDate <- function(croppar,
     firstwinterdoy <- calcDoyCrossThreshold(
       daily_temp_x, temp_fall, min_duration = cross_min_duration,
       from = warmest_doy)[["doy_cross_down"]]
+    winter_regime  <- 0L
 
   }
 
@@ -152,22 +180,81 @@ calcSowingDate <- function(croppar,
   firstspringmonth <- ifelse(
     firstspringdoy == -9999, DEFAULT_MONTH, doy2month(firstspringdoy)
     )
-  # When temp_spring is never crossed (cell too cold to register a spring onset), the spring sowing
-  # DOY falls back to the WARMEST day rather than DEFAULT_DOY (Jan-1 / Jul-1). At the cold margin the
-  # genuine up-crossing, when it does appear, sits right at the warmest day, so anchoring the
-  # no-crossing fallback there makes the default<->found sowing transition continuous instead of the
-  # ~half-year jump that otherwise flickers year to year (and propagates into the sowing-anchored
-  # hd_first harvest date). sowing_month stays DEFAULT_MONTH (set just above), so the cell is still
-  # flagged "no real season" (dflag) and the harvest too-cold guard still fires -- only the placeholder
-  # DOY moves from midwinter to midsummer. Cosmetic for non-viable cells, but it removes the dominant
-  # arctic/boreal sowing-flicker mode.
-  firstspringdoy   <- ifelse(firstspringdoy == -9999, warmest_doy, firstspringdoy)
+  # When temp_spring is never crossed, the spring sowing DOY falls back to the day the smoothed daily
+  # temperature comes CLOSEST to the threshold, rather than the fixed DEFAULT_DOY (Jan-1 / Jul-1). The
+  # no-crossing case has three causes, two mirror-image plus a boreal marginal one, with anchors:
+  #   - TOO COLD (arctic/boreal): the series never reaches temp_spring (max(daily_temp_x) < temp_spring).
+  #     The closest approach is the WARMEST day; at the margin the genuine up-crossing, when a warmer
+  #     year produces one, collapses onto warmest_doy -> anchor there.
+  #   - TOO WARM (subtropical): the series never drops below temp_spring (min(daily_temp_x) > temp_spring),
+  #     so there is no upward crossing to find. The closest approach is the COLDEST day; at the margin the
+  #     real up-crossing, when a colder year produces one, sits right after the brief cold dip and
+  #     collapses onto coldest_doy -> anchor there. (warmest_doy here is midsummer, ~half a year off and
+  #     the cause of the subtropical Spring_Wheat hd_first<->hd_last pair flicker.)
+  #   - SPANS THRESHOLD but no registered crossing (boreal, NOT rare): the series straddles temp_spring
+  #     (warmest_t >= temp_spring >= coldest_tx) yet the brief warm spell above it fails min_duration in
+  #     this year, so calcDoyCrossThreshold returns -9999. This is continuous with the warmest day too --
+  #     anchoring it to DEFAULT_DOY (Jan-1) instead flickered 1<->warmest_doy across the min_duration
+  #     margin and was a large STYP sowing-flicker source -> anchor on warmest_doy like the too-cold case.
+  # Anchoring each case at its closest-approach day makes the default<->found sowing transition continuous
+  # (the placeholder sits where the real crossing emerges) instead of a ~half-year jump that flickers year
+  # to year and propagates into the sowing-anchored hd_first harvest date. sowing_month stays
+  # DEFAULT_MONTH (set just above), so the cell is still flagged "no real season" (dflag) and the harvest
+  # too-cold guard still fires -- only the placeholder DOY moves. Cosmetic for non-viable cells, but it
+  # removes the dominant arctic/boreal sowing-flicker mode without the subtropical side effect.
+  warmest_t  <- max(daily_temp_x)   # peak of the same smoothed series the crossing scan reads
+  coldest_tx <- min(daily_temp_x)   # trough of that series (vs coldest_t above, a window mean)
+  firstspringdoy <- ifelse(firstspringdoy != -9999, firstspringdoy,
+                    ifelse(warmest_t  < temp_spring, warmest_doy,   # too cold  -> warmest day
+                    ifelse(coldest_tx > temp_spring, coldest_doy,   # too warm  -> coldest day
+                           warmest_doy)))                           # spans threshold but no registered crossing (boreal, brief warm spell fails min_duration) -> warmest day, continuous with the registering-year crossing
+
+  # Wettest-window sowing DOY (crop-independent: calcCropCalendars computes it once and passes it in;
+  # recompute only for direct callers). Hoisted out of the STYP branch because the winter-type PREC
+  # sowing below now shares it. Prefer the daily 120-day SUM P / SUM PET rule (calcDoyWetMonth); without
+  # the daily series, fall back to the monthly 4-month ratio-of-sums (.wetDoyMonthly) -- bug-free (it
+  # sums P and PET separately, never the monthly P/PET ratios a near-zero-PET month makes explode), just
+  # coarser (~1-month resolution).
+  if (is.null(wet_doy) && seasonality %in% c("PREC", "PRECTEMP")) {
+    if (!is.null(daily_prec) && !is.null(daily_pet)) {
+      wet_doy <- calcDoyWetMonth(daily_prec, daily_pet,
+                                 prev_doy = prev_wet_doy, eps = wet_window_eps,
+                                 decay = wet_window_decay)
+    } else if (!is.null(monthly_prec) && !is.null(monthly_pet)) {
+      wet_doy <- .wetDoyMonthly(monthly_prec, monthly_pet)
+    } else {
+      stop("PREC/PRECTEMP sowing needs P and PET: supply daily_prec/daily_pet (preferred, ",
+           "120-day window), monthly_prec/monthly_pet (4-month fallback), or a precomputed wet_doy.")
+    }
+  }
 
   # If winter type
   if (calcmethod_sdate == "WTYP_CALC_SDATE") {
 
-    if (firstwinterdoy > earliest_sdate &
-        firstwintermonth != DEFAULT_MONTH) {
+    # Winter wheat dispatches on seasonality like the STYP crops in cells with NO thermal winter to
+    # anchor to: the thermal autumn rule (coldest_doy-75 / temp_fall down-crossing) is meaningless there
+    # and was the dominant winter-wheat sowing-flicker source (coldest_doy = argmin of a near-flat
+    # temperature curve, swinging across the year). Only PRECTEMP/TEMP/TEMPPREC -- which have a genuine
+    # thermal winter, the vernalization signal winter wheat is defined by -- keep the thermal logic.
+    if (seasonality == "NO_SEASONALITY") {
+
+      # No thermal winter and no wet season: pin to the stable default, as every STYP crop does. Non-
+      # viable cell -> dflag 0.
+      sowing_month  <- DEFAULT_MONTH
+      sowing_doy    <- DEFAULT_DOY
+      sowing_season <- "spring"
+
+    } else if (seasonality == "PREC") {
+
+      # Wet season but no thermal winter: sow at the wettest-window onset, as every STYP crop does in
+      # PREC cells. The favorable period is set by water, not temperature; wet_doy carries the wet-window
+      # stickiness that damps flicker. A real season -> keep the real month (dflag 1).
+      sowing_doy    <- wet_doy
+      sowing_month  <- doy2month(sowing_doy)
+      sowing_season <- "spring"
+
+    } else if (firstwinterdoy > earliest_sdate &
+               firstwintermonth != DEFAULT_MONTH) {
 
       sowing_month  <- firstwintermonth
       sowing_doy    <- firstwinterdoy
@@ -183,7 +270,11 @@ calcSowingDate <- function(croppar,
 
     } else {
 
-      sowing_month  <- firstspringmonth
+      # No viable winter sowing found -> spring fallback, flagged "no real winter season" (dflag 0).
+      # sowing_month is forced to DEFAULT_MONTH here (was previously done by a blanket post-hoc override
+      # keyed on WTYP & season=="spring"; that override is gone because it would also clobber the PREC
+      # wet-season month above).
+      sowing_month  <- DEFAULT_MONTH
       sowing_doy    <- firstspringdoy
       sowing_season <- "spring"
 
@@ -199,26 +290,7 @@ calcSowingDate <- function(croppar,
 
     } else if (seasonality == "PREC" || seasonality == "PRECTEMP") {
 
-      # The wettest-window DOY is crop-independent, so calcCropCalendars computes
-      # it once and passes it in; only recompute if not supplied (direct callers).
-      # Prefer the daily 120-day SUM P / SUM PET rule (calcDoyWetMonth). Without the
-      # daily series, fall back to the monthly 4-month ratio-of-sums on the monthly P
-      # and PET TOTALS (.wetDoyMonthly) -- bug-free (it sums P and PET separately,
-      # never the monthly P/PET ratios that a near-zero-PET month makes explode) and
-      # using no daily interpolation, just coarser (~1-month resolution).
-      if (is.null(wet_doy)) {
-        if (!is.null(daily_prec) && !is.null(daily_pet)) {
-          wet_doy <- calcDoyWetMonth(daily_prec, daily_pet,
-                                     prev_doy = prev_wet_doy, eps = wet_window_eps,
-                                     decay = wet_window_decay)
-        } else if (!is.null(monthly_prec) && !is.null(monthly_pet)) {
-          wet_doy <- .wetDoyMonthly(monthly_prec, monthly_pet)
-        } else {
-          stop("PREC/PRECTEMP sowing needs P and PET: supply daily_prec/daily_pet ",
-               "(preferred, 120-day window), monthly_prec/monthly_pet (4-month ",
-               "fallback), or a precomputed wet_doy.")
-        }
-      }
+      # wet_doy computed above (now shared with the winter-type PREC branch).
       sowing_doy    <- wet_doy
       sowing_month  <- doy2month(sowing_doy)
       sowing_season <- "spring"
@@ -240,14 +312,17 @@ calcSowingDate <- function(croppar,
   sowing_doy    <- ifelse(
     sowing_doy == -9999, DEFAULT_DOY, sowing_doy
     )
-  sowing_month  <- ifelse(
-    calcmethod_sdate == "WTYP_CALC_SDATE" & sowing_season == "spring",
-    DEFAULT_MONTH, sowing_month
-    )
+  # NB: the former blanket "WTYP & sowing_season=='spring' -> sowing_month=DEFAULT_MONTH" override is
+  # gone. Each WTYP spring-season branch now sets sowing_month explicitly: the thermal spring fallback
+  # and NO_SEASONALITY set DEFAULT_MONTH (dflag 0), while PREC keeps doy2month(wet_doy) (dflag 1) -- the
+  # blanket override would have wrongly zeroed the PREC wet-season month.
 
   sd_vector <- list("sowing_month"  = sowing_month,
                     "sowing_doy"    = sowing_doy,
                     "sowing_season" = sowing_season)
+
+  # Carry the winter regime (1 warm / 0 mild / -1 cold) for next year's boundary hysteresis above.
+  attr(sd_vector, "winter_regime") <- winter_regime
 
   return(sd_vector)
 }

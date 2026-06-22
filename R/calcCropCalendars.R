@@ -67,6 +67,14 @@
 #' two-tier rule (wet-near gate at \code{ppet_ratio}, then the \code{ppet_min} floor) in
 #' \code{calcHarvestDateVector}, so there is no \code{min_ppet} graze to deadband. Kept in the
 #' signature only so existing callers do not error.
+#' @param prev_winter Integer winter regime last year (1 warm / 0 mild / -1 cold, or \code{NA}),
+#' forwarded to \code{calcSowingDate} for hysteresis on both winter-regime boundaries. Like the harvest
+#' state this is crop-DEPENDENT (the warm/cold/mild branch is gated on the crop's seasonality), so the
+#' caller carries it per cell AND per crop. The resolved regime is returned as
+#' \code{attr(., "winter_regime")}. Only winter-type crops act on it.
+#' @param winter_margin Absolute deadband (deg C, default 0 = off) on the two winter-regime thresholds,
+#' forwarded to \code{calcSowingDate}. Suppresses the ~half-year warm<->mild / autumn<->spring sowing
+#' flips when \code{coldest_t} grazes a boundary. See \code{?calcSowingDate}.
 #' @seealso calcClimatology
 #' @export
 
@@ -88,7 +96,9 @@ calcCropCalendars <- function(lon                   = NULL,
                               prev_harv             = NA_integer_,
                               harv_tmax_margin      = 0,
                               harv_ppet_eps         = 0,
-                              harv_exist_eps        = 0
+                              harv_exist_eps        = 0,
+                              prev_winter           = NA_integer_,
+                              winter_margin         = 0
                               ) {
 
   # Import crop parameters (unless already supplied by the caller).
@@ -158,7 +168,9 @@ calcCropCalendars <- function(lon                   = NULL,
     wet_window_decay      = wet_window_decay,
     cross_min_duration    = cross_min_duration,
     smooth_window         = smooth_window,
-    wet_doy               = wet_doy
+    wet_doy               = wet_doy,
+    prev_winter           = prev_winter,
+    winter_margin         = winter_margin
   )
 
   sowing_month  <- sowing[["sowing_month"]]
@@ -252,9 +264,10 @@ calcCropCalendars <- function(lon                   = NULL,
   harv_state <- as.integer(attr(harvest_rule, "tclass") +
                            3L * as.integer(attr(harvest_vector, "harv_hi")))
 
-  attr(pixel_df, "wet_doy")    <- wet_doy
-  attr(pixel_df, "seas_type")  <- seasonality   # crop-independent; carried as prev_seas state
-  attr(pixel_df, "harv_state") <- harv_state    # crop-dependent; carried as prev_harv state
+  attr(pixel_df, "wet_doy")     <- wet_doy
+  attr(pixel_df, "seas_type")   <- seasonality   # crop-independent; carried as prev_seas state
+  attr(pixel_df, "harv_state")  <- harv_state    # crop-dependent; carried as prev_harv state
+  attr(pixel_df, "winter_regime") <- attr(sowing, "winter_regime")  # crop-dependent; carried as prev_winter
   return(pixel_df)
 
 }
