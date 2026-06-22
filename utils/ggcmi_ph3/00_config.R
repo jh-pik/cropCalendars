@@ -106,11 +106,16 @@ seas_mtemp_margin <- 1        # seasonality min-temp threshold deadband (deg C)
 #   * The old always-wet test (min_ppet vs ppet_min) and its harv_ppet_eps deadband are RETIRED: the
 #     no-wet-end hd_last/hd_first decision is now the persistence-guarded two-tier rule (wet-near gate,
 #     then the ppet_min floor tier with the same machinery). harv_ppet_eps is ignored.
-#   * harv_tmax_margin (thermal-class deadband) gave ~0% historically (masked by moisture flicker);
-#     worth re-measuring now that the moisture flicker is largely removed -> left off for now.
+#   * harv_tmax_margin (thermal-class deadband) gave ~0% historically (masked by moisture flicker).
+#     With the moisture flicker removed (doy_wet2 retired, two-tier rule), the thermal-class boundary
+#     is now a leading flicker source: warmest_t grazing temp_base/temp_opt flips the t-low/mid/high
+#     class -> the whole harvest formula (hd_first<->hd_temp_base<->hd_temp_opt, ~16k cell-years). The
+#     1 deg C deadband (mirroring seas_mtemp_margin) stabilises the class hysteretically; a replay
+#     hotspot (Winter_Wheat 32.25/-19.75, warmest_t ~25 = temp_opt) drops 6->3 big jumps (the residual
+#     is a separate within-rule crossing-date wobble). Enabled.
 harv_ppet_eps     <- 0         # RETIRED/ignored (was always-wet test deadband)
 harv_exist_eps    <- 0         # superseded by the cross_min_area Schmitt (cc_regime path off)
-harv_tmax_margin  <- 0         # harvest-rule temp_max threshold deadband (deg C; 0 = off)
+harv_tmax_margin  <- 1         # harvest-rule temp_max threshold deadband (deg C; 0 = off) -- thermal-class thermostat
 
 climate_dirs  <- sub("/+$", "", strsplit(.settings$CLIMATE_DIR, ":")[[1]])  # search list
 climate_dir   <- climate_dirs[1]                                            # legacy (stage 01a)

@@ -152,6 +152,16 @@ calcSowingDate <- function(croppar,
   firstspringmonth <- ifelse(
     firstspringdoy == -9999, DEFAULT_MONTH, doy2month(firstspringdoy)
     )
+  # When temp_spring is never crossed (cell too cold to register a spring onset), the spring sowing
+  # DOY falls back to the WARMEST day rather than DEFAULT_DOY (Jan-1 / Jul-1). At the cold margin the
+  # genuine up-crossing, when it does appear, sits right at the warmest day, so anchoring the
+  # no-crossing fallback there makes the default<->found sowing transition continuous instead of the
+  # ~half-year jump that otherwise flickers year to year (and propagates into the sowing-anchored
+  # hd_first harvest date). sowing_month stays DEFAULT_MONTH (set just above), so the cell is still
+  # flagged "no real season" (dflag) and the harvest too-cold guard still fires -- only the placeholder
+  # DOY moves from midwinter to midsummer. Cosmetic for non-viable cells, but it removes the dominant
+  # arctic/boreal sowing-flicker mode.
+  firstspringdoy   <- ifelse(firstspringdoy == -9999, warmest_doy, firstspringdoy)
 
   # If winter type
   if (calcmethod_sdate == "WTYP_CALC_SDATE") {
@@ -222,8 +232,13 @@ calcSowingDate <- function(croppar,
     }
   } # STYP_CALC_SDATE
 
+  # Defensive: convert any still-unresolved crossing (-9999) to the canonical default DOY. The
+  # temperature spring fallback above already remaps the no-crossing case to the warmest day, so this
+  # no longer fires for those cells (keying it on sowing_month == DEFAULT_MONTH, as before, would
+  # clobber the warmest-day anchor back to Jan-1). It now only catches genuinely unresolved DOYs from
+  # reduced / monthly-only call paths; NO_SEASONALITY already sets sowing_doy = DEFAULT_DOY explicitly.
   sowing_doy    <- ifelse(
-    sowing_month == DEFAULT_MONTH, DEFAULT_DOY, sowing_doy
+    sowing_doy == -9999, DEFAULT_DOY, sowing_doy
     )
   sowing_month  <- ifelse(
     calcmethod_sdate == "WTYP_CALC_SDATE" & sowing_season == "spring",

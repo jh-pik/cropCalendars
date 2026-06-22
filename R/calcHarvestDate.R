@@ -9,8 +9,9 @@
 #' the respective crop species.
 #'
 #' @param croppar data.frame with crop parematers as returned by getCropParam
-#' @param monthly_temp numeric vector of length 12. Mean monthly air temperature
-#' (degree Celsius).
+#' @param monthly_temp DEPRECATED and ignored. Formerly the monthly-maximum fallback for the
+#' "too cold to grow" guards' warmest-window temperature; those guards now key on
+#' \code{sowing_month == 0} alone (the consistency fix). Kept in the signature for call compatibility.
 #' @param sowing_date numeric value as day of the year (DOY). This can be either
 #' caculated with calcSowingDate or prescribed.
 #' @param sowing_month numeric value between 0 and 12. 0 represents the "default
@@ -22,14 +23,13 @@
 #' @param harvest_rule harvest rule as calculated by calcHarvestRule
 #' @param hd_vector vector of possible harvest dates as calculated by
 #' calcHarvestDateVector
-#' @param daily_temp Numeric vector of length 365, the climatological daily mean
-#' temperature (\code{dtemp} from \code{calcClimatology}). When supplied, the
-#' "too cold to grow" guards use the warmest 30-day window mean instead of
-#' \code{max(monthly_temp)} (continuous; consistent with \code{calcHarvestRule}).
-#' \code{NULL} (default) uses the monthly maximum.
-#' @param smooth_window Integer day-window for the daily-climatology reductions (here the
-#' warmest-window mean used by the too-cold guards); the single global smoothing window
-#' (default 31). See \code{calcCropCalendars}.
+#' @param daily_temp DEPRECATED and ignored. Formerly drove the "too cold to grow" guards'
+#' warmest 30-day window mean; those guards now key on \code{sowing_month == 0} alone (the
+#' consistency fix -- the warmest-window test duplicated the sowing decision's own
+#' \code{temp_spring}/\code{temp_fall} crossing, less robustly, and flickered). Kept for call
+#' compatibility.
+#' @param smooth_window DEPRECATED and ignored here (was the window for the now-removed
+#' warmest-window guard temperature). Kept for call compatibility.
 #' @export
 
 calcHarvestDate <- function(croppar,
@@ -49,10 +49,10 @@ calcHarvestDate <- function(croppar,
 
   ndays_year <- 365
 
-  # Warmest-month temperature for the "too cold to grow" guards below: daily
-  # warmest-30-day-window mean when the daily climatology is supplied, else the
-  # calendar-month maximum (continuous; consistent with calcHarvestRule).
-  warmest_t <- if (!is.null(daily_temp)) .warmestWindowMean(daily_temp, width = smooth_window) else max(monthly_temp)
+  # NB: the "too cold to grow" guards below now key on sowing_month==0 alone (the consistency fix),
+  # so the warmest-window temperature (formerly warmest_t = .warmestWindowMean(daily_temp) vs
+  # temp_spring/temp_fall) is no longer needed here. monthly_temp / daily_temp / smooth_window are
+  # retained in the signature only so existing calcCropCalendars calls do not break.
 
   # Extract individual individual values from hd_vector
   for (i in names(hd_vector)) {
@@ -126,7 +126,16 @@ calcHarvestDate <- function(croppar,
         hd_rf <- hd_first
         hd_ir <- hd_first
       } else if (harvest_rule==6) {
-        if (sowing_month==0 && warmest_t < temp_fall) {
+        if (sowing_month==0) {
+          # DEFAULT sowing = calcSowingDate found no real season (no sustained temp_fall/temp_spring
+          # crossing) -> too cold/short to grow, harvest as early as possible. This used to re-test
+          # `warmest_t < temp_fall` on top of `sowing_month==0`, but that is a SECOND, less-robust test
+          # of the SAME threshold the sowing decision already made: sowing uses a sustained daily
+          # crossing (min_duration), this used the bare warmest-window MEAN with no persistence or
+          # deadband. In the cold-marginal band the two disagreed (sowing pinned default while the mean
+          # grazed the threshold), flipping the harvest hd_first<->hd_last every sub-degree wobble at
+          # otherwise-stable sowing. Keying the guard on the sowing verdict alone makes the two
+          # consistent and removes that flicker by construction. See NEWS.
           hd_rf <- hd_first
           hd_ir <- hd_first
         } else {
@@ -152,7 +161,12 @@ calcHarvestDate <- function(croppar,
         hd_rf <- hd_first
         hd_ir <- hd_first
       } else if (harvest_rule==6){
-        if (sowing_month==0 && warmest_t < temp_spring) {
+        if (sowing_month==0) {
+          # DEFAULT sowing -> no real season found -> harvest as early as possible. The former
+          # `&& warmest_t < temp_spring` re-test was dropped: it duplicated the sowing decision's own
+          # temp_spring test but with the bare warmest-window MEAN (no persistence/deadband), so it
+          # flickered hd_first<->hd_last at stable default sowing. Keyed on sowing_month alone now (the
+          # consistency fix; see the winter-type branch above and NEWS).
           hd_rf <- hd_first
           hd_ir <- hd_first
         } else if (seasonality=="PRECTEMP") { # T not stressful, only water limitation applies
