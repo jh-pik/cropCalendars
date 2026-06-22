@@ -4,7 +4,13 @@
 \alias{calcDoyCrossThreshold}
 \title{Calculate day of crossing threshold}
 \usage{
-calcDoyCrossThreshold(daily_value, threshold, min_duration = 1L, from = 1L)
+calcDoyCrossThreshold(
+  daily_value,
+  threshold,
+  min_duration = 1L,
+  from = 1L,
+  min_area = 0
+)
 }
 \arguments{
 \item{daily_value}{Numeric vector of length 365. Climatological daily
@@ -33,6 +39,15 @@ climates: e.g. for the spring up-crossing, starting from the coldest day skips
 an autumn temperature plateau grazing the threshold (which sits \emph{before}
 the winter minimum) and lands on the genuine spring warming crossing -- without
 introducing any temporal lag.}
+
+\item{min_area}{Non-negative integrated-excursion budget (default 0 = off). A crossing is
+accepted only if the excursion onto the new side accumulates
+\eqn{\sum |daily\_value - threshold| \ge min\_area} over its consecutive new-side run
+(a "deficit-days" area, evaluated circularly). This magnitude-weights the persistence
+guard: unlike \code{min_duration} (a pure day-count), a grazing crossing
+(small \eqn{|value - threshold|}) must persist much longer to qualify, while a decisive
+excursion triggers quickly -- suppressing spurious wet-end detections where the smoothed
+P/PET merely brushes \code{ppet_ratio}. Applied in addition to \code{min_duration}.}
 }
 \value{
 Named list with two elements:

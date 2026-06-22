@@ -15,6 +15,7 @@ calcCropCalendars(
   wet_window_eps = 0,
   wet_window_decay = 0.3,
   cross_min_duration = 1L,
+  cross_min_area = 0,
   smooth_window = 31L,
   prev_seas = NA_character_,
   seas_eps = 0,
@@ -63,6 +64,11 @@ forwarded to \code{calcSowingDate}/\code{calcHarvestDateVector} ->
 \code{calcDoyCrossThreshold} (default 1 = off). See
 \code{?calcDoyCrossThreshold}.}
 
+\item{cross_min_area}{Non-negative integrated-excursion (deficit-days) budget forwarded to
+\code{calcHarvestDateVector} for the wet-season-end level crossing only -- magnitude-weights
+the persistence guard so a grazing P/PET crossing must persist far longer to count
+(default 0 = off). See \code{?calcDoyCrossThreshold} (\code{min_area}).}
+
 \item{smooth_window}{Integer day-window for the daily-climatology smoothing -- the SINGLE
 global window applied to BOTH the threshold-crossing inputs (spring/fall temperature,
 hot-day, wet-season-end P/PET) AND the daily reductions (coldest/warmest-window means and
@@ -87,21 +93,22 @@ crop-independent, so this is per-cell state; the resolved class is returned as
 \code{seas_eps > 0}).}
 
 \item{prev_harv}{Integer packed harvest-rule hysteresis state from last year (or
-\code{NA}), encoding the thermal class and always-wet flag (\code{tclass +
-3*always_wet}). Unlike the seasonality/wet-window state this is crop-DEPENDENT, so
-the caller carries it per cell AND per crop. The resolved value is returned as
-\code{attr(., "harv_state")}. Used when \code{harv_tmax_margin > 0} or
-\code{harv_ppet_eps > 0}.}
+\code{NA}), encoding the thermal class and the wet-near-sowing flag (\code{tclass +
+3*harv_hi}, \code{harv_hi = rw1 + 12*wet_near}). Unlike the seasonality/wet-window state this is
+crop-DEPENDENT, so the caller carries it per cell AND per crop. The resolved value is returned as
+\code{attr(., "harv_state")}. Used for the wet-near Schmitt window and when
+\code{harv_tmax_margin > 0}.}
 
 \item{harv_tmax_margin}{Absolute deadband (deg C, default 0 = off) on the harvest
 rule's \code{temp_max} vs base/optimum reproductive thresholds (thermal class),
 forwarded to \code{calcHarvestRule}. Suppresses harvest-formula flips from a
 grazing \code{temp_max}.}
 
-\item{harv_ppet_eps}{Non-negative relative deadband (default 0 = off) on the
-always-wet test (\code{min_ppet} vs \code{ppet_min}), forwarded to
-\code{calcHarvestDateVector}. (The wet-season-end crossing existence is not
-deadbanded -- a one-directional threshold nudge manufactures flicker there.)}
+\item{harv_ppet_eps}{DEPRECATED, ignored. The always-wet test it deadbanded was retired:
+the no-wet-end \code{hd_last}/\code{hd_first} decision is now made by the persistence-guarded
+two-tier rule (wet-near gate at \code{ppet_ratio}, then the \code{ppet_min} floor) in
+\code{calcHarvestDateVector}, so there is no \code{min_ppet} graze to deadband. Kept in the
+signature only so existing callers do not error.}
 }
 \description{
 Wrapper function calling sub-functions to

@@ -2,6 +2,104 @@
 
 ## 0.2.0 — annual sliding-window pipeline
 
+### Retired the `doy_wet2` trend wet-end estimate
+- **The second, TREND-based wet-season-end candidate (`doy_wet2`) is removed.** It was the
+  declining-moisture crossing (`daily_ppet_diff` vs `ppet_ratio_diff`) that, when the level wet-end
+  `doy_wet1` already existed, could pull the escape **earlier** (`min` over both candidates); it never
+  decided wet-end existence. A GFDL-ESM4 historical A/B on the full two-tier rule set (wet-near gate
+  20/40, `cross_min_area = c(2,3)`) showed it is the **single largest remaining moisture-flicker
+  source**: turning it off cut global >30 d harvest flicker by **−14.6%** (−38.9% Spring_Wheat,
+  −14% Millet/Sorghum/Soybean, −13% Rice, −9% Maize) — the trend series crosses its threshold more
+  jitterily year to year than the level series does. Its only benefit was a **level** shift on 5.4% of
+  cell-years (median 23 d earlier), and dropping it sends exactly those cells to the **stable
+  `hd_maxrp` rotation cap** (`hd_wetseas` share 3.8% → 2.0%, `hd_maxrp` 17.7% → 21.8%). On the full
+  variant ladder this took total flicker from −40.5% (with `doy_wet2`) to **−49.2% vs baseline** — the
+  lowest of any variant tested, and reached with *less* `hd_first` floor-migration than the older
+  suppression levers, so it is not bought by flattening cells to the floor.
+- The escape is now the single level crossing `doy_wet1` only. The `USE_WET2` env / `cc_use_wet2`
+  option and the `monthly_ppet_diff` / `ppet_ratio_diff` inputs are obsolete (`monthly_ppet_diff` is
+  kept in the `calcHarvestDateVector` signature, ignored, so existing calls do not break);
+  `.dailyPpetDiff` is retained only for the diagnostic replay scripts under `utils/ggcmi_ph3`.
+
+### Harvest threshold-crossing sowing anchor (always on) + reference wet-end wrap
+- **Harvest crossings are now anchored at sowing (the Jan-1 scan was a bug).**
+  `calcDoyCrossThreshold` returns the first crossing scanning from **Jan 1** (`from = 1L`), i.e. the
+  earliest DOY of the year. For the wet-end (`doy_wet1` level; the `doy_wet2` trend, since retired) and hot-day
+  (`doy_exceed_opt_rp` / `doy_below_opt_rp`) detectors this means a marginal year whose smoothed
+  signal **grazes** the threshold mid-season registers a spurious early crossing that **pre-empts the
+  genuine after-sowing one**. Verified on Uruguay Rice: a DOY-48 P/PET dip (smoothed series sitting
+  right on `ppet_ratio = 1.0`) masks the real DOY-333 wet-end, so the harvest flips between `hd_first`
+  and the long wet-season escape year to year. All five harvest crossings now scan from
+  **`from = sowing_date`** (`sow_anchor`), returning the first crossing *after* sowing — the
+  physically meaningful one — mirroring the coldest/warmest-day anchors already used on the sowing
+  side. **No toggle: this is always on.** The hot-day `+365 if < sowing_date` post-patch is kept: it
+  renumbers a wrapped crossing onto the `sowing..sowing+365` axis **before** `rphase` is added (not
+  redundant with the downstream `< sowing` wrap), and is a no-op once the scan starts at sowing.
+- **Inherited from master, not introduced here.** Master's `calcDoyCrossThreshold`
+  (monthly→daily interpolated, `day_cross_down <- sort(unique(...))[1]`) makes the *identical*
+  earliest-DOY selection and has **no anchor anywhere** — neither the harvest crossings nor the
+  spring/fall sowing crossings. The flaw is latent in master only because the monthly-interpolated
+  P/PET curve is a smooth ~12-segment shape that almost never produces the fine sub-threshold graze
+  crossings; the daily-detection port (see "Daily-climatology rule port" below) raised timing
+  fidelity and **exposed** it. Master switched to daily detection without the anchor would show the
+  same Uruguay pathology. The sowing-side spring/fall crossings were already anchored on this branch
+  (coldest/warmest day); this extends the same fix to the harvest side.
+- **Wet-end escape simplified to the reference (master) wrap; the sub-minimum rule is dropped.**
+  The wet-season escape now places each wet-end by its circular forward distance from sowing,
+  `sowing + ((wet_end − sowing) %% 365) + rphase`, clamped in place to `[hd_first, hd_last]`. This is
+  **algebraically identical** to master's wrap (master adds 365 to any `wet_end < sowing_date`; the
+  in-place clamp reproduces master's downstream `max(hd_first,·)`/`min(·,hd_last)`) — verified
+  bit-identical across all 365 wet-end DOYs. It replaces the former **sub-minimum** wrap
+  (`wet_end + rphase < hd_first`), which was a workaround for the un-anchored Jan-1 detection letting a
+  spurious near-sowing wet-end (the tail of the previous wet season) through. With the sowing anchor
+  always on, those tails are no longer detected, so the sub-minimum patch is redundant.
+- **`cc_wrap_v2` removed.** Its wrap is now the default; its dry-near-sowing `wet_near` test became the
+  always-on **wet-near gate** (see "Two-tier wet-season decision" below).
+
+### Two-tier wet-season decision (organised by state at sowing; wet-near gate always on)
+- **The `hd_wetseas` branch is restructured around the state at sowing, not "wet-end found / not".** The old
+  branch keyed on `doy_wet1 == -9999` and, when absent, used a raw-min always-wet test (`min_ppet >= ppet_min`
+  with the `harv_ppet_eps` deadband) that **grazes** — a shallow dip the persistence guard already rejected as
+  "not a wet-end" still drags `min_ppet` below the floor and flips `hd_last`↔`hd_first` year to year. The new rule:
+  - **Wet-near gate (always on).** `wet_near` = `any(daily_ppet[sowing : sowing + w_eff] >= ppet_ratio)` — are we
+    in, or imminently entering, an active wet season? The window admits a monsoon onset that opens a week or two
+    after a temperature-set sowing (TEMPPREC, e.g. NE-China Maize); it is **hysteretic** (Schmitt `cc_wet_window_lo`/
+    `cc_wet_window_hi`, default 10/20, carried as `prev_wet_near` in the `harv_hi` 12× bit). Promoted from the
+    experimental `cc_wet_near_suppress` toggle (now obsolete/ignored) to the default rule.
+  - **Tier 1 — `wet_near`:** active season → wet-end is the first persistent down-crossing after sowing
+    (`doy_wet1`) → escape, clamped `[hd_first, hd_last]`; **no wet-end → `hd_last`** (the season never
+    ends, "always-wet").
+  - **Tier 2 — `!wet_near` (dry at sowing, onset too far):** fall back to the **aridity floor `ppet_min` with the
+    SAME machinery** one threshold lower — wet-near at `ppet_min` AND no persistent `ppet_min` down-crossing →
+    `hd_last`; else **`hd_first`**. For the 6 crops with `ppet_min == ppet_ratio` this is a no-op (the floor test is
+    the failed gate again → `hd_first`); only **Rice** (`ppet_ratio = 1.0`, `ppet_min = 0.5`) exercises it,
+    reproducing the old always-wet outcome (above floor, no floor dry-down → `hd_last`) now **persistence-guarded**.
+  - **Retired:** the raw-min `always_wet` test, `min_ppet`, `harv_ppet_eps` (ignored, kept in the signature only),
+    `prev_always_wet`. **Self-healing:** a wet-end (or onset) oscillating around sowing now lands on `hd_first`
+    *both* ways — end just after → wet at sowing → tier 1 → tiny `fwd` → lower-clamp `hd_first`; end just before →
+    dry, no re-onset → `!wet_near` → `hd_first` — instead of wrapping to `hd_last` when it falls just before sowing.
+  - **Same restructure on the `cc_regime` path** (its deadbanded `doy_wet1` re-detection feeds the same
+    `decide_wetseas`; `rw1` kept only as a carried diagnostic).
+  - Verified (full-rule, GFDL-ESM4, big-jump flicker `>30 d`, 1985–2005, Maize): **Uruguay 45 → 3**, **Romania&Bulg
+    126 → 47**, **Texas 342 → 171**. Global 1990 sample reason shares move *toward* moisture (`hd_last` 2→11%,
+    `hd_wetseas` 5→9%, `hd_first` 50→47% — i.e. **not** an `hd_first` over-migration). Re-validate at scale with a
+    global run; the wet-near window width (`w_lo`/`w_hi`) is the main calibration knob.
+- **`cross_min_area` deficit-days guard (hysteretic) on the level crossing; `min_duration` retired there.**
+  `calcDoyCrossThreshold` gains `min_area`: a down-crossing of `daily_ppet` past a threshold counts only if the
+  integrated excursion `Σ|daily_ppet − threshold|` over the sustained run reaches the budget (deficit-days). It
+  magnitude-weights persistence — a shallow grazing dip must persist far longer than a deep one — collapsing
+  bistable `doy_wet1` (Romania/Bulgaria early-summer dip ↔ true dry-down; NE-China early-monsoon break) onto the
+  genuine wet-end, and also guards the tier-2 `ppet_min` floor crossing. `cross_min_area` is a **hysteretic Schmitt
+  pair `c(lo, hi)`** (a scalar = no hysteresis; default 0 = off, config `c(2, 3)`): a previously-FOUND wet-end
+  (`prev_wetend_found`, carried in the `harv_hi` 6× bit) uses the lenient `lo`, a previously-ABSENT one the strict
+  `hi`, so a dip whose area grazes the budget can't flip the wet-end's existence year to year. Unlike a
+  level-threshold nudge (`harv_exist_eps`, now superseded — raising `ppet_ratio` to keep a found crossing
+  paradoxically erases it when the peak sits just above), nudging the **area** is monotonic in dip depth, so it
+  cannot destroy the crossing it keeps. **`min_duration` is retired on the `doy_wet1` level crossing** (an area
+  budget ≥ ~2 already implies multi-day persistence at realistic P/PET); the hot-day temperature
+  crossings keep `cross_min_duration`. Stateful replay (GFDL-ESM4, 1985–2005, Maize): the Schmitt `c(2,3)` cuts
+  big-jump flicker further — Uruguay 3→1, Romania&Bulg 26→16, Texas 158→149.
+
 ### Unified daily-climatology smoothing window
 - **One windowing primitive, `.circRoll`.** The forward-sum `.circRollSum` and the
   centred-mean `.smoothCycle` are merged into a single `.circRoll(x, w, position, mean)`
@@ -45,8 +143,8 @@
   the former `ppet_min`/`ppet_ratio` dead-zone for free. The `.driestWindowPpet` helper and the
   now-vacuous `cc_harmonize_minppet` toggle are removed. (The toggle's earlier +40% regression
   was a 15-vs-30-day window mismatch, gone once the two windows were unified.)
-- **`.dailyPpetDiff` normalised to a per-30-day rate** (`× 30/lag`): the `doy_wet2`
-  moisture-trend threshold `ppet_ratio_diff` is calibrated as Δ(P/PET) per 30 days, so the
+- **`.dailyPpetDiff` normalised to a per-30-day rate** (`× 30/lag`): the (now-retired) `doy_wet2`
+  moisture-trend threshold `ppet_ratio_diff` was calibrated as Δ(P/PET) per 30 days, so the
   diff is rescaled to that horizon and stays valid for any `smooth_window` (no-op at 30).
   Only this reduction needed normalising — the others are means/ratios/argmin compared to
   absolute thresholds, whose units don't scale with the window.
@@ -96,7 +194,7 @@
   The coldest/warmest-month temperature (`calcSeasonality` min-temp, `calcSowingDate`
   winter-type tests, `calcHarvestRule`/`calcHarvestDate` warmest-month guards), the
   warmest-month mid-day, the coldest-day sowing anchor, the driest-month P/PET
-  (`hd_wetseas` fallback) and the P/PET month-over-month difference (`doy_wet2`) now use
+  (`hd_wetseas` fallback) and the P/PET month-over-month difference (the since-retired `doy_wet2`) now use
   30-day windows / centres of the daily climatology (`R/zz_daily_reductions.R`). A daily
   mean is already a per-DOY 30-year mean, so the 30-day window reproduces the
   calendar-month value continuously, removing the ~30-day flips when the warmest/coldest

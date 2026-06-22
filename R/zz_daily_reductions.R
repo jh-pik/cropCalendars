@@ -100,9 +100,10 @@
 # version: at each junction day j it is the `width`-day Sum P / Sum PET of the window
 # ENDING at j (the trailing/"this month" side) minus the window STARTING at j (the
 # leading/"next month" side), so a positive value flags declining moisture across j --
-# but on the daily grid, removing the residual whole-month quantization of the second
-# wet-season-end candidate (doy_wet2). The junction value is assigned back to the DOY
-# d = j - h that the two windows straddle (h = width %/% 2).
+# on the daily grid, removing the residual whole-month quantization. The junction value
+# is assigned back to the DOY d = j - h that the two windows straddle (h = width %/% 2).
+# NB: the trend wet-end candidate (doy_wet2) this fed was RETIRED (see NEWS); this helper
+# is retained only for the diagnostic replay scripts under utils/ggcmi_ph3.
 # NORMALISED to a per-30-day rate (x 30/lag): the two window centres are `lag = 2*h`
 # days apart, but the comparison threshold ppet_ratio_diff is calibrated as a
 # delta(P/PET) per 30 days (= the month-over-month mppet_diff), so the diff is rescaled

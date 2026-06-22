@@ -61,18 +61,19 @@ phu_smooth_window <- 1        # PHU temperature-averaging window (years; 1 = per
 # off (e.g. a 1-day dip through temp_spring=14 in the autumn descent). The two knobs:
 #   smooth_window      : the SINGLE global day-window the daily climatologies are read
 #       through -- both the crossing detectors AND the window/extremum reductions
-#       (warmest/coldest-month temperature, driest-month P/PET, the moisture-trend diff).
+#       (warmest/coldest-month temperature, driest-month P/PET).
 #       Set to 31 (~1 month, ODD) so the reductions stay monthly-equivalent AND the
 #       crossings share the same smoothing (previously crossings used 15, reductions a
 #       structural 30; unified here). ODD makes the centred smoothing/argmax exactly
-#       symmetric -- an EVEN window centres half a day low (see .circRoll's caveat). The
-#       moisture-trend diff (doy_wet2) is normalised to a per-30-day rate so its
-#       ppet_ratio_diff threshold stays valid at any window (lag=30 at both 30 and 31).
+#       symmetric -- an EVEN window centres half a day low (see .circRoll's caveat).
 #       The 120-day wettest window (calcDoyWetMonth) keeps its own fixed window.
 #   cross_min_duration : a crossing must stay on the new side of the threshold for
 #       at least this many days to count (1 = off).
 smooth_window       <- 31L    # global daily-climatology smoothing window (days; odd = symmetric)
-cross_min_duration  <- 5L     # min sustained-excursion days for calcDoyCrossThreshold (1 = off)
+cross_min_duration  <- 5L     # min sustained-excursion days for the hot-day temperature crossings (1 = off;
+                              # the doy_wet1 LEVEL crossing is now guarded by cross_min_area alone)
+cross_min_area      <- c(2,3) # wet-end LEVEL crossing deficit-days budget, HYSTERETIC c(lo,hi): prev-found uses
+                              # lo (stay found), prev-absent uses hi (become found) -> damps existence flicker
 
 # Wettest-window hysteresis (distance-weighted, max-normalised selection). For the
 # ~57% of PREC/PRECTEMP cells with a near-tied second 120-day P/PET peak, the plain
@@ -92,25 +93,24 @@ seas_eps          <- 0.25     # seasonality CV-threshold deadband (rel.; 0 = off
 seas_mtemp_margin <- 1        # seasonality min-temp threshold deadband (deg C)
 
 # Harvest-rule hysteresis. Harvest dates flip more than sowing because several thresholds in
-# the harvest rule are grazed by the sliding-window climatology, snapping the selected
-# candidate. Measured on UNBIASED random cells (the "200 worst cells" view was misleading):
-#   * The dominant ~50% of growing-period flips were the +365 wet-end wrap oscillating around
-#     the sowing DOY. Now fixed structurally IN THE PACKAGE (sub-minimum wet-end -> wrap long
-#     is the standard rule, calcHarvestDateVector), not via a knob -> ~-50% flips, all crops.
-#   * harv_ppet_eps deadbands the always-wet test (min_ppet vs ppet_min); 0.15 takes the
-#     combined fix to ~-50%.
-#   * harv_tmax_margin (thermal-class deadband) gave ~0% on real data -> left off.
-#   * The wet-end crossing EXISTENCE flicker (FOUND <-> ABSENT on the ppet_ratio doy_wet1
-#     crossing) is addressed by harv_exist_eps: a DIRECTIONAL two-point Schmitt trigger
-#     (3-state regime carried in prev_harv) -- leaving absent-DRY needs the peak to clear
-#     ppet_ratio*(1+eps), leaving absent-WET needs the trough below ppet_ratio*(1-eps), FOUND
-#     reads plain ppet_ratio. This is the proper hysteresis the earlier one-directional nudge /
-#     dry-aware split could not be (both regressed). Gated on the cc_regime code path
-#     (auto-enabled by 01b when harv_exist_eps > 0). always-wet keeps its own harv_ppet_eps
-#     deadband (ppet_min is a separate aridity floor; Rice: ppet_ratio=1.0 but ppet_min=0.5).
-harv_ppet_eps     <- 0.15     # always-wet test deadband (rel.; 0 = off)
-harv_exist_eps    <- 0.15     # wet-end EXISTENCE directional deadband (rel.; 0 = off)
-harv_tmax_margin  <- 0        # harvest-rule temp_max threshold deadband (deg C; 0 = off)
+# the harvest rule are grazed by the sliding-window climatology. The wet-season decision is now a
+# TWO-TIER rule organised by state at sowing (calcHarvestDateVector), with all its de-flickering
+# built into the package and driven by two Schmitt mechanisms, NOT by the old deadbands:
+#   * Wet-end ESCAPE wrap oscillating around sowing (the old dominant ~50% of flips): now self-healed
+#     by the always-on WET-NEAR GATE (an end just before/after sowing both land on hd_first), window
+#     WET_WINDOW_LO/HI (10/20).
+#   * Wet-end EXISTENCE flicker (doy_wet1 FOUND <-> ABSENT): now damped by the cross_min_area Schmitt
+#     c(lo,hi) above (a deficit-days budget hysteresis -- monotonic in dip depth, so unlike the old
+#     level-threshold nudge it cannot erase the crossing it keeps). This SUPERSEDES harv_exist_eps
+#     (the cc_regime path) as the default existence de-flicker.
+#   * The old always-wet test (min_ppet vs ppet_min) and its harv_ppet_eps deadband are RETIRED: the
+#     no-wet-end hd_last/hd_first decision is now the persistence-guarded two-tier rule (wet-near gate,
+#     then the ppet_min floor tier with the same machinery). harv_ppet_eps is ignored.
+#   * harv_tmax_margin (thermal-class deadband) gave ~0% historically (masked by moisture flicker);
+#     worth re-measuring now that the moisture flicker is largely removed -> left off for now.
+harv_ppet_eps     <- 0         # RETIRED/ignored (was always-wet test deadband)
+harv_exist_eps    <- 0         # superseded by the cross_min_area Schmitt (cc_regime path off)
+harv_tmax_margin  <- 0         # harvest-rule temp_max threshold deadband (deg C; 0 = off)
 
 climate_dirs  <- sub("/+$", "", strsplit(.settings$CLIMATE_DIR, ":")[[1]])  # search list
 climate_dir   <- climate_dirs[1]                                            # legacy (stage 01a)

@@ -28,6 +28,14 @@
 #'   an autumn temperature plateau grazing the threshold (which sits \emph{before}
 #'   the winter minimum) and lands on the genuine spring warming crossing -- without
 #'   introducing any temporal lag.
+#' @param min_area Non-negative integrated-excursion budget (default 0 = off). A crossing is
+#'   accepted only if the excursion onto the new side accumulates
+#'   \eqn{\sum |daily\_value - threshold| \ge min\_area} over its consecutive new-side run
+#'   (a "deficit-days" area, evaluated circularly). This magnitude-weights the persistence
+#'   guard: unlike \code{min_duration} (a pure day-count), a grazing crossing
+#'   (small \eqn{|value - threshold|}) must persist much longer to qualify, while a decisive
+#'   excursion triggers quickly -- suppressing spurious wet-end detections where the smoothed
+#'   P/PET merely brushes \code{ppet_ratio}. Applied in addition to \code{min_duration}.
 #'
 #' @return Named list with two elements:
 #'   \describe{
@@ -42,7 +50,7 @@
 #' @export
 
 calcDoyCrossThreshold <- function(daily_value, threshold, min_duration = 1L,
-                                  from = 1L) {
+                                  from = 1L, min_area = 0) {
 
   n <- length(daily_value)
 
@@ -65,6 +73,29 @@ calcDoyCrossThreshold <- function(daily_value, threshold, min_duration = 1L,
       up_cand   <- up_cand[vapply(up_cand,   persists, logical(1), want = TRUE)]
     if (length(down_cand))
       down_cand <- down_cand[vapply(down_cand, persists, logical(1), want = FALSE)]
+  }
+
+  # Integrated-excursion (area) guard: keep only crossings whose excursion onto the new side
+  # accumulates a magnitude budget min_area = sum over the consecutive new-side run of
+  # |daily_value - threshold| (a "deficit-days" area). Unlike min_duration (a pure day-count, which
+  # accepts a shallow graze the same as a deep drop), this weights persistence by HOW FAR past the
+  # threshold the signal goes -- so a grazing crossing (small |value - threshold|) must last much
+  # longer to qualify, while a decisive excursion triggers quickly. Suppresses the spurious wet-end
+  # detections where smoothed P/PET merely brushes ppet_ratio. min_area = 0 (default) is off.
+  if (min_area > 0) {
+    area <- function(d, want) {     # accumulate |value-thr| while on the `want` side, circularly
+      total <- 0
+      for (k in 0:(n - 1L)) {
+        idx <- ((d - 1L + k) %% n) + 1L
+        if (is_above[idx] != want) break
+        total <- total + abs(daily_value[idx] - threshold)
+      }
+      total
+    }
+    if (length(up_cand))
+      up_cand   <- up_cand[vapply(up_cand,   function(d) area(d, TRUE)  >= min_area, logical(1))]
+    if (length(down_cand))
+      down_cand <- down_cand[vapply(down_cand, function(d) area(d, FALSE) >= min_area, logical(1))]
   }
 
   # First candidate at/after `from`, scanning circularly (from = 1 -> plain first).

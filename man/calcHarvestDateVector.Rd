@@ -15,11 +15,12 @@ calcHarvestDateVector(
   daily_prec = NULL,
   daily_pet = NULL,
   cross_min_duration = 1L,
+  cross_min_area = 0,
   smooth_window = 31L,
-  prev_always_wet = NA,
-  harv_ppet_eps = 0,
   prev_rw1 = NA_integer_,
-  harv_exist_eps = 0
+  harv_exist_eps = 0,
+  prev_wet_near = NA,
+  prev_wetend_found = NA
 )
 }
 \arguments{
@@ -36,8 +37,9 @@ calcSowingDate.}
 
 \item{monthly_ppet}{numeric vestor of length 12. Mean Potential Evapotranspiration (mm). See calcClimatology.}
 
-\item{monthly_ppet_diff}{numeric vestor of length 12. Mean difference of
-Potential Evapotranspiration (mm). See calcClimatology.}
+\item{monthly_ppet_diff}{DEPRECATED and ignored. Was the monthly P/PET trend feeding the
+retired \code{doy_wet2} trend wet-end estimate (see NEWS). Kept in the signature so existing
+\code{calcCropCalendars} calls do not break.}
 
 \item{daily_temp}{numeric vector of length 365. Climatological daily mean
 temperature (deg C), one value per DOY (the \code{dtemp} element from
@@ -54,24 +56,24 @@ daily P/PET (ratio of per-DOY means) for the wet-season-end crossing. If
 per DOY (the \code{dpet} element from \code{calcClimatology}).}
 
 \item{cross_min_duration}{integer minimum sustained-excursion length (days)
-forwarded to \code{calcDoyCrossThreshold} for the wet-season-end and
-hot-day crossings (default 1 = off). See \code{?calcDoyCrossThreshold}.}
+forwarded to \code{calcDoyCrossThreshold} for the hot-day temperature crossings
+(default 1 = off). The wet-season-end LEVEL crossing (\code{doy_wet1})
+is guarded by \code{cross_min_area} alone (its \code{min_duration} is retired, since a
+deficit-days budget >= ~2 already implies multi-day persistence). See \code{?calcDoyCrossThreshold}.}
+
+\item{cross_min_area}{Integrated-excursion (deficit-days) budget for the wet-season-end LEVEL
+crossing (\code{doy_wet1}, \code{daily_ppet} vs \code{ppet_ratio}; also the tier-2 \code{ppet_min}
+floor crossing) -- magnitude-weights persistence so a grazing P/PET crossing must persist far
+longer to count. A length-2 \code{c(lo, hi)} HYSTERETIC (Schmitt) pair: a previously-FOUND wet-end
+(\code{prev_wetend_found}) uses the lenient \code{lo}, a previously-ABSENT one the strict \code{hi},
+so a dip whose area grazes the budget does not flip the wet-end's existence year to year. A scalar
+means \code{lo == hi} (no hysteresis); default 0 = off. See \code{?calcDoyCrossThreshold}.}
 
 \item{smooth_window}{Integer day-window for the daily-climatology smoothing -- the single
 global window applied to BOTH the crossing inputs (the hot-day \code{daily_temp} crossing,
 and \code{daily_prec} / \code{daily_pet} before the wet-season-end P/PET ratio) AND the
-reductions (\code{warmest_day}, driest-window P/PET, the \code{daily_ppet_diff} trend).
+reductions (\code{warmest_day}, driest-window P/PET).
 Default 31 (odd). See \code{calcCropCalendars}.}
-
-\item{prev_always_wet}{Logical hysteresis state from last year (or \code{NA}): was
-the cell always-wet (\code{min_ppet >= ppet_min})? Used only when
-\code{harv_ppet_eps > 0}. The resolved value is returned as
-\code{attr(., "always_wet")}.}
-
-\item{harv_ppet_eps}{Non-negative relative deadband (default 0 = off) on the
-always-wet test (\code{min_ppet} vs \code{ppet_min}): it relaxes \code{ppet_min}
-toward keeping \code{prev_always_wet}, so a grazing P/PET wobble no longer snaps
-\code{hd_wetseas} between \code{hd_last} and \code{hd_first}.}
 
 \item{prev_rw1}{Integer level wet-end EXISTENCE regime from last year (0 = absent-DRY,
 1 = found, 2 = absent-WET), or \code{NA}. Used only on the \code{cc_regime} path when
@@ -82,6 +84,19 @@ wet-end EXISTENCE boundary (the \code{ppet_ratio} level crossing, \code{doy_wet1
 the absent-DRY regime needs the peak to clear \code{ppet_ratio * (1 + eps)}; leaving
 absent-WET needs the trough below \code{ppet_ratio * (1 - eps)}. Experimental, gated by
 \code{options(cc_regime = TRUE)}.}
+
+\item{prev_wet_near}{Logical hysteresis state from last year (or \code{NA}): was the cell wet
+near sowing? Drives the always-on WET-NEAR GATE -- the wet-season escape (and the no-wet-end
+\code{hd_last}/\code{hd_first} decision) is taken only when the cell is wet within a hysteretic
+window after the (temperature-set) sowing; otherwise it falls to the aridity-floor tier and, if
+that also fails, to \code{hd_first}. Previously-wet widens the window (\code{options(cc_wet_window_hi)},
+default 20), previously-dry narrows it (\code{cc_wet_window_lo}, default 10). The resolved value is
+carried forward packed into \code{attr(., "harv_hi")} (12x bit).}
+
+\item{prev_wetend_found}{Logical hysteresis state from last year (or \code{NA}): did a wet-end
+(\code{doy_wet1}) exist? Selects the Schmitt bound of \code{cross_min_area} (found -> lenient
+\code{lo}, absent -> strict \code{hi}). The resolved value is carried forward in the
+\code{attr(., "harv_hi")} 6x bit. \code{NA} on the first year uses the strict bound.}
 }
 \description{
 Harvest reasons are the events that can trigger the harvest

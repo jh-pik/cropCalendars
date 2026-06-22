@@ -35,6 +35,7 @@ ncores <- if (length(args) >= 3) as.integer(args[3]) else
 if (!exists("wet_window_eps"))        wet_window_eps        <- 0
 if (!exists("wet_window_decay"))      wet_window_decay      <- 0.3
 if (!exists("cross_min_duration"))    cross_min_duration    <- 1L
+if (!exists("cross_min_area"))        cross_min_area        <- 0
 if (!exists("smooth_window"))         smooth_window         <- 31L
 if (!exists("seas_eps"))              seas_eps              <- 0
 if (!exists("seas_mtemp_margin"))     seas_mtemp_margin     <- 1
@@ -62,6 +63,25 @@ if (Sys.getenv("HARV_EXIST_EPS") != "") {
   harv_exist_eps <- as.numeric(Sys.getenv("HARV_EXIST_EPS"))
   options(cc_regime = (harv_exist_eps > 0))
 }
+# Harvest threshold-crossing scans (wet-end + hot-day) are always anchored at sowing (the Jan-1
+# scan is a bug that lets a spurious early-DOY crossing pre-empt the genuine first-after-sowing
+# one); no toggle.
+# WET_WINDOW_LO/HI set the always-on WET-NEAR GATE's hysteretic Schmitt window (defaults 10/20): the
+# wet-season decision is taken only when the cell is wet within that window after the (temperature-set)
+# sowing, else it falls to the ppet_min floor tier and then hd_first. (WET_NEAR_SUPPRESS is obsolete --
+# the gate is now the default rule, not a toggle -- and is ignored if set.)
+# USE_WET2 is obsolete -- the doy_wet2 TREND wet-end estimate was retired (see NEWS) -- and is ignored.
+if (Sys.getenv("WET_WINDOW_LO") != "") options(cc_wet_window_lo = as.integer(Sys.getenv("WET_WINDOW_LO")))
+if (Sys.getenv("WET_WINDOW_HI") != "") options(cc_wet_window_hi = as.integer(Sys.getenv("WET_WINDOW_HI")))
+# CROSS_MIN_AREA: integrated-deficit (deficit-days) budget for the wet-end LEVEL crossing -- a
+# grazing P/PET crossing must accumulate sum(ppet_ratio - daily_ppet) >= this to count (default 0).
+# A HYSTERETIC (Schmitt) pair "lo,hi" damps wet-end existence flicker (prev-found uses lo, prev-absent
+# uses hi); a single value means lo == hi (no hysteresis). e.g. CROSS_MIN_AREA="2,3".
+if (Sys.getenv("CROSS_MIN_AREA") != "")
+  cross_min_area <- as.numeric(strsplit(Sys.getenv("CROSS_MIN_AREA"), ",")[[1]])
+# CROSS_MIN_DUR: min sustained-excursion days for the hot-day temperature crossings (the wet-end
+# doy_wet1 is guarded by cross_min_area alone). Default 1 = off.
+if (Sys.getenv("CROSS_MIN_DUR") != "") cross_min_duration <- as.integer(Sys.getenv("CROSS_MIN_DUR"))
 out_suffix <- Sys.getenv("OUT_SUFFIX", "")
 
 clim_dir <- paste0(output_dir, "/crop_calendars/annual_climatology/", scen, "/", gcm, "/")
@@ -77,8 +97,9 @@ if (!is.null(years_env)) { keep <- cyears %in% years_env; cfiles <- cfiles[keep]
 if (length(cyears) == 0) stop("No climatology files match (run 01a; check YEARS).")
 emit_years <- cyears
 nE <- length(emit_years)
-cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d smooth_window=%d seas_eps=%g harv_ppet_eps=%g harv_exist_eps=%g harv_tmax_margin=%g\n",
-            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, smooth_window, seas_eps, harv_ppet_eps, harv_exist_eps, harv_tmax_margin))
+cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d cross_min_area=%s smooth_window=%d seas_eps=%g harv_exist_eps=%g harv_tmax_margin=%g wet_window=%d/%d\n",
+            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, paste(cross_min_area, collapse="/"), smooth_window, seas_eps, harv_exist_eps, harv_tmax_margin,
+            as.integer(getOption("cc_wet_window_lo", 10L)), as.integer(getOption("cc_wet_window_hi", 20L))))
 
 # Crops + pre-extracted parameters. CROPS env (rb_cal names, comma-separated, e.g.
 # "Maize") restricts the crop set for fast dev/validation runs (default: all).
@@ -111,6 +132,7 @@ computeYear <- function(clim, prev_wet, prev_seas, prev_harv) {
                              prev_wet_doy = prev_wet[j], wet_window_eps = wet_window_eps,
                              wet_window_decay = wet_window_decay,
                              cross_min_duration = cross_min_duration,
+                             cross_min_area = cross_min_area,
                              smooth_window = smooth_window,
                              prev_seas = prev_seas[j], seas_eps = seas_eps,
                              seas_mtemp_margin = seas_mtemp_margin,

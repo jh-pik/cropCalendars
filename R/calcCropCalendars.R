@@ -29,6 +29,10 @@
 #' forwarded to \code{calcSowingDate}/\code{calcHarvestDateVector} ->
 #' \code{calcDoyCrossThreshold} (default 1 = off). See
 #' \code{?calcDoyCrossThreshold}.
+#' @param cross_min_area Non-negative integrated-excursion (deficit-days) budget forwarded to
+#' \code{calcHarvestDateVector} for the wet-season-end level crossing only -- magnitude-weights
+#' the persistence guard so a grazing P/PET crossing must persist far longer to count
+#' (default 0 = off). See \code{?calcDoyCrossThreshold} (\code{min_area}).
 #' @param smooth_window Integer day-window for the daily-climatology smoothing -- the SINGLE
 #' global window applied to BOTH the threshold-crossing inputs (spring/fall temperature,
 #' hot-day, wet-season-end P/PET) AND the daily reductions (coldest/warmest-window means and
@@ -49,19 +53,20 @@
 #' \code{calcSeasonality} as \code{mtemp_margin} (default 1; only used when
 #' \code{seas_eps > 0}).
 #' @param prev_harv Integer packed harvest-rule hysteresis state from last year (or
-#' \code{NA}), encoding the thermal class and always-wet flag (\code{tclass +
-#' 3*always_wet}). Unlike the seasonality/wet-window state this is crop-DEPENDENT, so
-#' the caller carries it per cell AND per crop. The resolved value is returned as
-#' \code{attr(., "harv_state")}. Used when \code{harv_tmax_margin > 0} or
-#' \code{harv_ppet_eps > 0}.
+#' \code{NA}), encoding the thermal class and the wet-near-sowing flag (\code{tclass +
+#' 3*harv_hi}, \code{harv_hi = rw1 + 12*wet_near}). Unlike the seasonality/wet-window state this is
+#' crop-DEPENDENT, so the caller carries it per cell AND per crop. The resolved value is returned as
+#' \code{attr(., "harv_state")}. Used for the wet-near Schmitt window and when
+#' \code{harv_tmax_margin > 0}.
 #' @param harv_tmax_margin Absolute deadband (deg C, default 0 = off) on the harvest
 #' rule's \code{temp_max} vs base/optimum reproductive thresholds (thermal class),
 #' forwarded to \code{calcHarvestRule}. Suppresses harvest-formula flips from a
 #' grazing \code{temp_max}.
-#' @param harv_ppet_eps Non-negative relative deadband (default 0 = off) on the
-#' always-wet test (\code{min_ppet} vs \code{ppet_min}), forwarded to
-#' \code{calcHarvestDateVector}. (The wet-season-end crossing existence is not
-#' deadbanded -- a one-directional threshold nudge manufactures flicker there.)
+#' @param harv_ppet_eps DEPRECATED, ignored. The always-wet test it deadbanded was retired:
+#' the no-wet-end \code{hd_last}/\code{hd_first} decision is now made by the persistence-guarded
+#' two-tier rule (wet-near gate at \code{ppet_ratio}, then the \code{ppet_min} floor) in
+#' \code{calcHarvestDateVector}, so there is no \code{min_ppet} graze to deadband. Kept in the
+#' signature only so existing callers do not error.
 #' @seealso calcClimatology
 #' @export
 
@@ -75,6 +80,7 @@ calcCropCalendars <- function(lon                   = NULL,
                               wet_window_eps        = 0,
                               wet_window_decay      = 0.3,
                               cross_min_duration    = 1L,
+                              cross_min_area        = 0,
                               smooth_window         = 31L,
                               prev_seas             = NA_character_,
                               seas_eps              = 0,
@@ -161,15 +167,16 @@ calcCropCalendars <- function(lon                   = NULL,
 
   # Harvest date
   # Harvest-rule hysteresis state carried from last year, packed into one integer:
-  # harv_state = tclass(0-2) + 3*harv_hi, where harv_hi = rw1(0-2) + 6*aw(0-1) encodes the
-  # level wet-end EXISTENCE regime (rw1: 0 absent-DRY / 1 found / 2 absent-WET) and the
-  # always-wet flag (aw). The default path uses only aw (6*aw); the cc_regime path uses both.
-  # The aw bit is kept at /6 in both paths so the decode is path-independent. NA on the first
-  # year / when off.
-  prev_tclass     <- if (is.na(prev_harv)) NA_integer_ else prev_harv %% 3L
-  prev_hi         <- if (is.na(prev_harv)) NA_integer_ else prev_harv %/% 3L
-  prev_rw1        <- if (is.na(prev_hi)) NA_integer_ else prev_hi %% 3L
-  prev_always_wet <- if (is.na(prev_hi)) NA else as.logical(prev_hi %/% 6L)
+  # harv_state = tclass(0-2) + 3*harv_hi, where harv_hi = rw1(0-2) + 6*wf(0-1) + 12*wn(0-1) encodes the
+  # level wet-end EXISTENCE regime (rw1: 0 absent-DRY / 1 found / 2 absent-WET, cc_regime path only),
+  # the wet-end-found flag (wf, for the min_area Schmitt) and the wet-near-sowing flag (wn, the
+  # always-on wet-near gate). Each bit sits at a fixed place (wf at /6%%2, wn at /12) so the decode is
+  # path-independent.
+  prev_tclass        <- if (is.na(prev_harv)) NA_integer_ else prev_harv %% 3L
+  prev_hi            <- if (is.na(prev_harv)) NA_integer_ else prev_harv %/% 3L
+  prev_rw1           <- if (is.na(prev_hi)) NA_integer_ else prev_hi %% 3L
+  prev_wetend_found  <- if (is.na(prev_hi)) NA else as.logical((prev_hi %/% 6L) %% 2L)
+  prev_wet_near      <- if (is.na(prev_hi)) NA else as.logical(prev_hi %/% 12L)
 
   harvest_rule  <- calcHarvestRule(
     croppar      = crop_parameters,
@@ -193,11 +200,12 @@ calcCropCalendars <- function(lon                   = NULL,
     daily_prec        = dprec,
     daily_pet         = dpet,
     cross_min_duration = cross_min_duration,
+    cross_min_area     = cross_min_area,
     smooth_window      = smooth_window,
-    prev_always_wet   = prev_always_wet,
-    harv_ppet_eps     = harv_ppet_eps,
     prev_rw1          = prev_rw1,
-    harv_exist_eps    = harv_exist_eps
+    harv_exist_eps    = harv_exist_eps,
+    prev_wet_near     = prev_wet_near,
+    prev_wetend_found = prev_wetend_found
   )
 
   harvest <- calcHarvestDate(
