@@ -72,9 +72,12 @@
 #' state this is crop-DEPENDENT (the warm/cold/mild branch is gated on the crop's seasonality), so the
 #' caller carries it per cell AND per crop. The resolved regime is returned as
 #' \code{attr(., "winter_regime")}. Only winter-type crops act on it.
-#' @param winter_margin Absolute deadband (deg C, default 0 = off) on the two winter-regime thresholds,
-#' forwarded to \code{calcSowingDate}. Suppresses the ~half-year warm<->mild / autumn<->spring sowing
-#' flips when \code{coldest_t} grazes a boundary. See \code{?calcSowingDate}.
+#' @param winter_margin Absolute deadband (deg C, default 0 = off) on the WARM winter-regime boundary
+#' (\code{basetemp.low}), forwarded to \code{calcSowingDate}. Suppresses the ~half-year warm<->mild sowing
+#' flip when \code{coldest_t} grazes the boundary. See \code{?calcSowingDate}.
+#' @param winter_cold_margin Absolute deadband (deg C, default 0 = off) on the COLD winter-regime boundary
+#' (\eqn{-10}\,°C), forwarded to \code{calcSowingDate}. Decoupled from \code{winter_margin} so the
+#' continental autumn<->spring WW flip (Russia) can be widened independently. See \code{?calcSowingDate}.
 #' @seealso calcClimatology
 #' @export
 
@@ -98,7 +101,8 @@ calcCropCalendars <- function(lon                   = NULL,
                               harv_ppet_eps         = 0,
                               harv_exist_eps        = 0,
                               prev_winter           = NA_integer_,
-                              winter_margin         = 0
+                              winter_margin         = 0,
+                              winter_cold_margin    = 0
                               ) {
 
   # Import crop parameters (unless already supplied by the caller).
@@ -170,7 +174,8 @@ calcCropCalendars <- function(lon                   = NULL,
     smooth_window         = smooth_window,
     wet_doy               = wet_doy,
     prev_winter           = prev_winter,
-    winter_margin         = winter_margin
+    winter_margin         = winter_margin,
+    winter_cold_margin    = winter_cold_margin
   )
 
   sowing_month  <- sowing[["sowing_month"]]

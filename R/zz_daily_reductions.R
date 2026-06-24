@@ -83,10 +83,31 @@
   min(.circRoll(daily_temp, width, mean = TRUE))
 }
 
-# Centre DOY of the coldest `width`-day window (daily analogue of the coldest-month
-# mid-day). .doyWarmestWindow on the negated series finds the coldest window.
+# Phase (centre DOY) of the cold season, as a coldness-weighted CIRCULAR CENTROID of
+# the smoothed annual temperature cycle -- NOT the argmin. The argmin (which.max of the
+# negated window, the obvious "coldest-month mid-day") is hypersensitive in cells with a
+# broad, flat winter trough (maritime NW Europe: only ~2 deg C separates the coldest day
+# from a typical winter day), so the single lowest day jumps +-30 d between adjacent
+# climatology years even though the trough's CENTRE barely moves. That jitter fed the
+# winter-wheat warm-regime sowing (coldest_doy - 75) and the spring up-crossing scan
+# (from = coldest_doy) and was the dominant maritime sowing-flicker source. The centroid
+# averages over the whole cold plateau, so it is ~10x more stable (validated: spread
+# ~55 d -> ~5 d on UK/France cells) while remaining a pure PHASE estimator -- weights
+# depend on the SHAPE of the cycle, not its level, so it does not drift with warming the
+# way a fixed-threshold crossing date would. For a sharp continental winter it ~= argmin.
+# Weight each DOY by how far it sits below the annual peak (0 at the warmest day, max at
+# the coldest); take the circular mean angle via atan2 of the weighted sin/cos sums. A
+# degenerate constant series (all weights 0) yields atan2(0,0)=0 -> DOY 1, harmless (such
+# cells are NO_SEASONALITY and never read coldest_doy). The monthly-fallback path in
+# calcSowingDate (which.min(monthly_temp)) is unchanged: it is the coarse no-daily-data
+# branch, unused in the GGCMI runs where the daily climatology is always present.
 .doyColdestWindow <- function(daily_temp, width = 30L) {
-  .doyWarmestWindow(-daily_temp, width)
+  tx  <- .circRoll(daily_temp, width, "center", mean = TRUE)
+  n   <- length(tx)
+  w   <- max(tx) - tx
+  ang <- 2 * pi * (seq_len(n) - 1L) / n
+  m   <- atan2(sum(w * sin(ang)), sum(w * cos(ang)))
+  as.integer((round((m %% (2 * pi)) / (2 * pi) * n)) %% n + 1L)
 }
 
 # Daily analogue of min(monthly_ppet) -- the always-wet aridity floor -- is just

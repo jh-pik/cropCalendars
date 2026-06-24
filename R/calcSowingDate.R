@@ -53,14 +53,19 @@
 #' PREC/PRECTEMP spring-sowing branch, so the caller (\code{calcCropCalendars}) can
 #' compute it once per cell instead of twice. \code{NULL} (default) recomputes it.
 #' @param prev_winter Integer winter regime chosen last year (1 = warm, 0 = mild, -1 = cold), or
-#' \code{NA} (default). Used only when \code{winter_margin > 0} to make BOTH winter-regime boundaries
-#' (\code{basetemp.low} and \eqn{-10}\,°C) hysteretic. Returned as \code{attr(., "winter_regime")} for
-#' the caller to carry forward. Only winter-type (\code{WTYP_CALC_SDATE}) crops act on it.
-#' @param winter_margin Absolute deadband (deg C, default 0 = off) on the two winter-regime thresholds
-#' (warm boundary \code{basetemp.low}, cold boundary \eqn{-10}). With a prior regime, each boundary
-#' relaxes toward last year's regime so the regime is sticky within a \code{2 * winter_margin} band,
-#' suppressing the ~half-year autumn<->spring / warm<->mild sowing flips when \code{coldest_t} grazes a
-#' boundary. Mirrors \code{seas_mtemp_margin} / \code{harv_tmax_margin}.
+#' \code{NA} (default). Used (when \code{winter_margin > 0} or \code{winter_cold_margin > 0}) to make the
+#' winter-regime boundaries (\code{basetemp.low} and \eqn{-10}\,°C) hysteretic. Returned as
+#' \code{attr(., "winter_regime")} for the caller to carry forward. Only winter-type
+#' (\code{WTYP_CALC_SDATE}) crops act on it.
+#' @param winter_margin Absolute deadband (deg C, default 0 = off) on the WARM winter-regime boundary
+#' (\code{basetemp.low}, the warm<->mild / autumn-anchor split). With a prior regime it relaxes toward
+#' last year's regime so the regime is sticky within a \code{2 * winter_margin} band, suppressing the
+#' ~half-year warm<->mild sowing flip when \code{coldest_t} grazes the boundary. Mirrors
+#' \code{seas_mtemp_margin} / \code{harv_tmax_margin}.
+#' @param winter_cold_margin Absolute deadband (deg C, default 0 = off) on the COLD winter-regime boundary
+#' (\eqn{-10}\,°C, the mild<->cold / autumn-sowing<->spring-fallback split). Decoupled from
+#' \code{winter_margin} so the continental cold boundary (Russia autumn<->spring WW flip) can be widened
+#' independently of the warm boundary. Same prior-regime relaxation (sticky within \code{2 * winter_cold_margin}).
 #' @export
 calcSowingDate <- function(croppar,
                            monthly_temp,
@@ -78,7 +83,8 @@ calcSowingDate <- function(croppar,
                            monthly_pet           = NULL,
                            smooth_window         = 31L,
                            prev_winter           = NA_integer_,
-                           winter_margin         = 0
+                           winter_margin         = 0,
+                           winter_cold_margin    = 0
                            ) {
 
   # extract individual parameter names and values
@@ -116,19 +122,24 @@ calcSowingDate <- function(croppar,
   DEFAULT_DOY     <- ifelse(lat >= 0, 1, 182)
   DEFAULT_MONTH   <- 0
 
-  # Winter-regime classification (warm / mild / cold) with optional hysteresis on BOTH boundaries. The
+  # Winter-regime classification (warm / mild / cold) with optional hysteresis on EACH boundary. The
   # two thresholds each pick a different autumn-sowing anchor, so when coldest_t grazes either boundary
   # the sowing date jumps between adjacent years -- the dominant winter-wheat sowing-flicker mode:
   #   * warm boundary (coldest_t > basetemp.low): warm -> coldest_doy-75, mild -> temp_fall down-crossing
   #   * cold boundary (coldest_t < -10):          cold -> -9999 (spring fallback), mild -> down-crossing
-  # With winter_margin > 0 and last year's regime (prev_winter: 1 warm / 0 mild / -1 cold), each boundary
-  # relaxes TOWARD the previous regime (mirroring seas_mtemp_margin / harv_tmax_margin): the regime you
-  # were in stays sticky unless coldest_t moves a full margin past its edge, so each band is 2*margin wide.
+  # Each boundary has its OWN deadband -- winter_margin for the warm boundary, winter_cold_margin for the
+  # cold boundary -- so the continental cold boundary (Russia autumn<->spring flip) can be widened without
+  # loosening the warm (India/US) boundary. With last year's regime (prev_winter: 1 warm / 0 mild / -1
+  # cold) each boundary relaxes TOWARD the previous regime (mirroring seas_mtemp_margin /
+  # harv_tmax_margin): the regime you were in stays sticky unless coldest_t moves a full margin past its
+  # edge, so each band is 2*margin wide.
   warm_thr <- basetemp.low
   cold_thr <- -10
-  if (winter_margin > 0 && !is.na(prev_winter)) {
-    warm_thr <- if (prev_winter >=  1L) basetemp.low - winter_margin else basetemp.low + winter_margin
-    cold_thr <- if (prev_winter <= -1L) -10          + winter_margin else -10          - winter_margin
+  if (!is.na(prev_winter)) {
+    if (winter_margin > 0)
+      warm_thr <- if (prev_winter >=  1L) basetemp.low - winter_margin      else basetemp.low + winter_margin
+    if (winter_cold_margin > 0)
+      cold_thr <- if (prev_winter <= -1L) -10          + winter_cold_margin else -10          - winter_cold_margin
   }
   winter_is_temp <- seasonality %in% c("TEMP", "TEMPPREC", "PRECTEMP", "PREC")
 
@@ -168,46 +179,49 @@ calcSowingDate <- function(croppar,
     firstwinterdoy == -9999, DEFAULT_DOY, firstwinterdoy
     )
 
-  # First day of spring: the first upward temp crossing AFTER the coldest day.
-  # Anchoring the scan to the (very stable) winter minimum skips an autumn
-  # temperature plateau grazing temp_spring -- which sits before the coldest day --
-  # that otherwise produces a spurious ~half-year-early sowing in mild-winter cells
-  # (e.g. Uruguay / S. Brazil), without adding any temporal lag. coldest_doy is the
-  # centre of the coldest 30-day window of the daily climatology (computed above).
-  firstspringdoy   <- calcDoyCrossThreshold(
+  # First day of spring: the first upward temp_spring crossing AFTER the coldest day.
+  # Anchoring the scan to the winter minimum (coldest_doy) skips an autumn temperature
+  # plateau grazing temp_spring -- which sits before the coldest day -- that otherwise
+  # produces a spurious ~half-year-early sowing in mild-winter cells (e.g. Uruguay /
+  # S. Brazil), without adding any temporal lag.
+  #
+  # First spring up-crossing of temp_spring, scanned forward from the centroid coldest_doy (the
+  # phase-anchored winter trough). No depth gate: when the trough never dips below temp_spring there
+  # is simply no up-crossing and calcDoyCrossThreshold returns -9999, which the mean-based fallback
+  # below resolves to coldest_doy -- the same place a gated-off cell landed, so the former depth gate
+  # (coldest_t < temp_spring - spring_offset) was a no-op once the fallback became mean-anchored, and
+  # was removed. The centroid coldest_doy (not argmin) is what de-flickers the maritime cells now.
+  firstspringdoy <- calcDoyCrossThreshold(
     daily_temp_x, temp_spring, min_duration = cross_min_duration,
     from = coldest_doy)[["doy_cross_up"]]
   firstspringmonth <- ifelse(
     firstspringdoy == -9999, DEFAULT_MONTH, doy2month(firstspringdoy)
     )
-  # When temp_spring is never crossed, the spring sowing DOY falls back to the day the smoothed daily
-  # temperature comes CLOSEST to the threshold, rather than the fixed DEFAULT_DOY (Jan-1 / Jul-1). The
-  # no-crossing case has three causes, two mirror-image plus a boreal marginal one, with anchors:
-  #   - TOO COLD (arctic/boreal): the series never reaches temp_spring (max(daily_temp_x) < temp_spring).
-  #     The closest approach is the WARMEST day; at the margin the genuine up-crossing, when a warmer
-  #     year produces one, collapses onto warmest_doy -> anchor there.
-  #   - TOO WARM (subtropical): the series never drops below temp_spring (min(daily_temp_x) > temp_spring),
-  #     so there is no upward crossing to find. The closest approach is the COLDEST day; at the margin the
-  #     real up-crossing, when a colder year produces one, sits right after the brief cold dip and
-  #     collapses onto coldest_doy -> anchor there. (warmest_doy here is midsummer, ~half a year off and
-  #     the cause of the subtropical Spring_Wheat hd_first<->hd_last pair flicker.)
-  #   - SPANS THRESHOLD but no registered crossing (boreal, NOT rare): the series straddles temp_spring
-  #     (warmest_t >= temp_spring >= coldest_tx) yet the brief warm spell above it fails min_duration in
-  #     this year, so calcDoyCrossThreshold returns -9999. This is continuous with the warmest day too --
-  #     anchoring it to DEFAULT_DOY (Jan-1) instead flickered 1<->warmest_doy across the min_duration
-  #     margin and was a large STYP sowing-flicker source -> anchor on warmest_doy like the too-cold case.
+  # When temp_spring is never crossed (gated off above, or no registered crossing), the spring sowing DOY
+  # falls back to the day the smoothed daily temperature comes CLOSEST to the threshold, rather than the
+  # fixed DEFAULT_DOY (Jan-1 / Jul-1). A single discriminant -- the ANNUAL-MEAN smoothed temperature
+  # relative to temp_spring -- picks the closest-approach day (replacing the former max/min three-case
+  # logic, which mis-routed gated-off shallow-maritime cells to the warmest day):
+  #   - MEAN BELOW temp_spring (cold cell): the series only reaches up toward the threshold at its summer
+  #     peak; the closest approach -- and where the genuine up-crossing collapses in a marginally warmer
+  #     year -- is the WARMEST day. Covers the too-cold arctic/boreal case and the spans-but-brief-warm-
+  #     spell boreal case (mean still below). Anchoring at DEFAULT_DOY (Jan-1) instead flickered
+  #     1<->warmest_doy across the margin -- a large STYP sowing-flicker source.
+  #   - MEAN ABOVE temp_spring (warm cell): the series only dips toward the threshold at its winter trough;
+  #     the closest approach -- and where the up-crossing sits, right after the brief cold dip -- is the
+  #     COLDEST day (centroid coldest_doy, ~Jan). Covers the too-warm subtropical case AND the gated-off
+  #     shallow-maritime case (NW Europe Spring_Wheat), whose real sowing is the winter trough, NOT
+  #     midsummer. The old warmest_doy anchor here was ~half a year off and drove the Spring_Wheat/STYP
+  #     half-year fallback flip (and the subtropical hd_first<->hd_last harvest pair flicker).
   # Anchoring each case at its closest-approach day makes the default<->found sowing transition continuous
   # (the placeholder sits where the real crossing emerges) instead of a ~half-year jump that flickers year
   # to year and propagates into the sowing-anchored hd_first harvest date. sowing_month stays
   # DEFAULT_MONTH (set just above), so the cell is still flagged "no real season" (dflag) and the harvest
-  # too-cold guard still fires -- only the placeholder DOY moves. Cosmetic for non-viable cells, but it
-  # removes the dominant arctic/boreal sowing-flicker mode without the subtropical side effect.
-  warmest_t  <- max(daily_temp_x)   # peak of the same smoothed series the crossing scan reads
-  coldest_tx <- min(daily_temp_x)   # trough of that series (vs coldest_t above, a window mean)
+  # too-cold guard still fires -- only the placeholder DOY moves.
+  mean_tx <- mean(daily_temp_x)     # annual mean of the same smoothed series the crossing scan reads
   firstspringdoy <- ifelse(firstspringdoy != -9999, firstspringdoy,
-                    ifelse(warmest_t  < temp_spring, warmest_doy,   # too cold  -> warmest day
-                    ifelse(coldest_tx > temp_spring, coldest_doy,   # too warm  -> coldest day
-                           warmest_doy)))                           # spans threshold but no registered crossing (boreal, brief warm spell fails min_duration) -> warmest day, continuous with the registering-year crossing
+                    ifelse(mean_tx > temp_spring, coldest_doy,     # warm cell -> coldest day (winter trough ~Jan)
+                           warmest_doy))                           # cold cell -> warmest day (summer peak)
 
   # Wettest-window sowing DOY (crop-independent: calcCropCalendars computes it once and passes it in;
   # recompute only for direct callers). Hoisted out of the STYP branch because the winter-type PREC

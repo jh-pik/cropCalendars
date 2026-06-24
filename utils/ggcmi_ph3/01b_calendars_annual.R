@@ -43,6 +43,7 @@ if (!exists("harv_ppet_eps"))         harv_ppet_eps         <- 0
 if (!exists("harv_exist_eps"))        harv_exist_eps        <- 0
 if (!exists("harv_tmax_margin"))      harv_tmax_margin      <- 0
 if (!exists("winter_margin"))         winter_margin         <- 0
+if (!exists("winter_cold_margin"))    winter_cold_margin    <- 0
 
 # Directional wet-end EXISTENCE deadband (harv_exist_eps on the ppet_ratio doy_wet1 crossing)
 # lives on the gated cc_regime code path; enable it iff the knob is on.
@@ -98,8 +99,8 @@ if (!is.null(years_env)) { keep <- cyears %in% years_env; cfiles <- cfiles[keep]
 if (length(cyears) == 0) stop("No climatology files match (run 01a; check YEARS).")
 emit_years <- cyears
 nE <- length(emit_years)
-cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d cross_min_area=%s smooth_window=%d seas_eps=%g harv_exist_eps=%g harv_tmax_margin=%g winter_margin=%g wet_window=%d/%d\n",
-            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, paste(cross_min_area, collapse="/"), smooth_window, seas_eps, harv_exist_eps, harv_tmax_margin, winter_margin,
+cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d cross_min_area=%s smooth_window=%d seas_eps=%g harv_exist_eps=%g harv_tmax_margin=%g winter_margin=%g winter_cold_margin=%g wet_window=%d/%d\n",
+            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, paste(cross_min_area, collapse="/"), smooth_window, seas_eps, harv_exist_eps, harv_tmax_margin, winter_margin, winter_cold_margin,
             as.integer(getOption("cc_wet_window_lo", 10L)), as.integer(getOption("cc_wet_window_hi", 20L))))
 
 # Crops + pre-extracted parameters. CROPS env (rb_cal names, comma-separated, e.g.
@@ -141,7 +142,8 @@ computeYear <- function(clim, prev_wet, prev_seas, prev_harv, prev_winter) {
                              harv_exist_eps = harv_exist_eps,
                              harv_tmax_margin = harv_tmax_margin,
                              prev_winter = prev_winter[j, ci],
-                             winter_margin = winter_margin)
+                             winter_margin = winter_margin,
+                             winter_cold_margin = winter_cold_margin)
       if (ci == 1L) { wd <- attr(r, "wet_doy"); st <- attr(r, "seas_type") }
       hv[ci] <- attr(r, "harv_state")     # crop-DEPENDENT harvest hysteresis state
       wc[ci] <- attr(r, "winter_regime")  # crop-DEPENDENT winter-regime hysteresis state

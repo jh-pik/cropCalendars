@@ -336,10 +336,22 @@ calcHarvestDateVector <- function(croppar,
   as.numeric(tapply(d[["y"]], doy, mean)[as.character(1:365)])
 }
 
-# Centre DOY of the warmest `width`-day window of a daily (DOY-indexed)
-# climatology, evaluated circularly. Daily analogue of "warmest month mid-day".
-# The centred rolling sum is already indexed by window centre, so its argmax IS the
-# centre DOY (no manual half-width shift).
+# Centre DOY of the warm season, as a warmth-weighted CIRCULAR CENTROID of the smoothed
+# annual cycle -- the exact MIRROR of .doyColdestWindow (weight = tx - min(tx), 0 at the
+# coldest day, max at the warmest). NOT the argmax: which.max is hypersensitive in cells
+# with a broad, flat summer plateau (and degenerate where the plateau straddles the
+# calendar-year boundary, e.g. subtropical Southern-Hemisphere cells, so the single
+# warmest day jumps +-30..180 d between adjacent climatology years). That jitter feeds
+# hd_temp_base (= warmest_day [+ rphase]) in the harvest rule and warmest_doy (the cold-cell
+# spring-temperature fallback in calcSowingDate). The centroid averages over the whole warm
+# plateau (~10x more stable) while staying a pure PHASE estimator -- weights depend on the
+# SHAPE of the cycle, not its level, so it does not drift with warming. For a sharp summer
+# peak it ~= argmax. Degenerate constant series (all weights 0) -> atan2(0,0)=0 -> DOY 1.
 .doyWarmestWindow <- function(daily_value, width = 30) {
-  as.integer(which.max(.circRoll(daily_value, width, "center")))
+  tx  <- .circRoll(daily_value, width, "center", mean = TRUE)
+  n   <- length(tx)
+  w   <- tx - min(tx)
+  ang <- 2 * pi * (seq_len(n) - 1L) / n
+  m   <- atan2(sum(w * sin(ang)), sum(w * cos(ang)))
+  as.integer((round((m %% (2 * pi)) / (2 * pi) * n)) %% n + 1L)
 }

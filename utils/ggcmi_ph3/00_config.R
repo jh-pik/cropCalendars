@@ -125,7 +125,14 @@ harv_tmax_margin  <- 1         # harvest-rule temp_max threshold deadband (deg C
 # the -10 boundary). The 1 deg C deadband (mirroring seas_mtemp_margin / harv_tmax_margin) carries last
 # year's regime and relaxes BOTH boundaries toward it (2*margin = 2 deg C sticky band each), latching
 # the cell into one regime. Enabled.
-winter_margin <- 1             # winter-regime (basetemp.low & -10 C) sowing threshold deadband (deg C; 0 = off)
+winter_margin      <- 1        # WARM winter boundary (basetemp.low) deadband (deg C; 0 = off)
+winter_cold_margin <- 2        # COLD winter boundary (-10 C) deadband (deg C; 0 = off); decoupled, set to 2 to fully latch the Russia continental autumn<->spring WW flip (measurement suggested ~2)
+
+# Spring up-crossing depth gate REMOVED (was spring_offset/spring_margin). The temp_spring up-crossing is
+# now always scanned forward from the centroid coldest_doy; when the trough never dips below temp_spring
+# there is no crossing and the mean-anchored fallback (mean above temp_spring -> coldest_doy ~Jan; below
+# -> warmest_doy) resolves the placeholder -- the same DOY a gated-off cell landed on, so the gate was a
+# no-op once the fallback became mean-based. See calcSowingDate.R.
 
 climate_dirs  <- sub("/+$", "", strsplit(.settings$CLIMATE_DIR, ":")[[1]])  # search list
 climate_dir   <- climate_dirs[1]                                            # legacy (stage 01a)

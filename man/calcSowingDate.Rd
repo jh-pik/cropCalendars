@@ -21,7 +21,8 @@ calcSowingDate(
   monthly_pet = NULL,
   smooth_window = 31L,
   prev_winter = NA_integer_,
-  winter_margin = 0
+  winter_margin = 0,
+  winter_cold_margin = 0
 )
 }
 \arguments{
@@ -90,15 +91,21 @@ mean and coldest/warmest anchor DOYs). Default 31 (odd). See \code{calcCropCalen
 daily climatology is still kept; this only sets the window the rules read it through.}
 
 \item{prev_winter}{Integer winter regime chosen last year (1 = warm, 0 = mild, -1 = cold), or
-\code{NA} (default). Used only when \code{winter_margin > 0} to make BOTH winter-regime boundaries
-(\code{basetemp.low} and \eqn{-10}\,°C) hysteretic. Returned as \code{attr(., "winter_regime")} for
-the caller to carry forward. Only winter-type (\code{WTYP_CALC_SDATE}) crops act on it.}
+\code{NA} (default). Used (when \code{winter_margin > 0} or \code{winter_cold_margin > 0}) to make the
+winter-regime boundaries (\code{basetemp.low} and \eqn{-10}\,°C) hysteretic. Returned as
+\code{attr(., "winter_regime")} for the caller to carry forward. Only winter-type
+(\code{WTYP_CALC_SDATE}) crops act on it.}
 
-\item{winter_margin}{Absolute deadband (deg C, default 0 = off) on the two winter-regime thresholds
-(warm boundary \code{basetemp.low}, cold boundary \eqn{-10}). With a prior regime, each boundary
-relaxes toward last year's regime so the regime is sticky within a \code{2 * winter_margin} band,
-suppressing the ~half-year autumn<->spring / warm<->mild sowing flips when \code{coldest_t} grazes a
-boundary. Mirrors \code{seas_mtemp_margin} / \code{harv_tmax_margin}.}
+\item{winter_margin}{Absolute deadband (deg C, default 0 = off) on the WARM winter-regime boundary
+(\code{basetemp.low}, the warm<->mild / autumn-anchor split). With a prior regime it relaxes toward
+last year's regime so the regime is sticky within a \code{2 * winter_margin} band, suppressing the
+~half-year warm<->mild sowing flip when \code{coldest_t} grazes the boundary. Mirrors
+\code{seas_mtemp_margin} / \code{harv_tmax_margin}.}
+
+\item{winter_cold_margin}{Absolute deadband (deg C, default 0 = off) on the COLD winter-regime boundary
+(\eqn{-10}\,°C, the mild<->cold / autumn-sowing<->spring-fallback split). Decoupled from
+\code{winter_margin} so the continental cold boundary (Russia autumn<->spring WW flip) can be widened
+independently of the warm boundary. Same prior-regime relaxation (sticky within \code{2 * winter_cold_margin}).}
 }
 \description{
 Calculate sowing date (Waha et al., 2012)
