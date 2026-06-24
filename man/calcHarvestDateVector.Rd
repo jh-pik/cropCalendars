@@ -20,7 +20,9 @@ calcHarvestDateVector(
   prev_rw1 = NA_integer_,
   harv_exist_eps = 0,
   prev_wet_near = NA,
-  prev_wetend_found = NA
+  prev_wetend_found = NA,
+  temp_cross_min_area = 0,
+  prev_topt_found = NA
 )
 }
 \arguments{
@@ -97,6 +99,19 @@ carried forward packed into \code{attr(., "harv_hi")} (12x bit).}
 (\code{doy_wet1}) exist? Selects the Schmitt bound of \code{cross_min_area} (found -> lenient
 \code{lo}, absent -> strict \code{hi}). The resolved value is carried forward in the
 \code{attr(., "harv_hi")} 6x bit. \code{NA} on the first year uses the strict bound.}
+
+\item{temp_cross_min_area}{Integrated-excursion (degree-days) budget for the reproductive-phase
+hot-day temperature crossing (\code{hd_temp_opt}: \code{daily_temp} vs \code{temp_opt_rphase}) --
+the temperature analogue of \code{cross_min_area}, magnitude-weighting the crossing so a smoothed
+temperature that merely grazes \code{temp_opt_rphase} must persist far longer to register a hot
+season. Damps the \code{hd_temp_opt} EXISTENCE flicker in marginal cells whose warm plateau sits at
+the threshold (e.g. subtropical winter wheat). A length-2 \code{c(lo, hi)} HYSTERETIC pair like
+\code{cross_min_area}: a previously-FOUND crossing (\code{prev_topt_found}) uses the lenient
+\code{lo}, a previously-ABSENT one the strict \code{hi}. Scalar = no hysteresis; default 0 = off.}
+
+\item{prev_topt_found}{Logical hysteresis state from last year (or \code{NA}): did the reproductive
+hot-day crossing (\code{doy_opt_rp}) exist? Selects the Schmitt bound of \code{temp_cross_min_area}.
+Carried forward in the \code{attr(., "harv_hi")} 24x bit. \code{NA} on the first year = strict.}
 }
 \description{
 Harvest reasons are the events that can trigger the harvest

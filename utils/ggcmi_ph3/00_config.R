@@ -72,8 +72,16 @@ phu_smooth_window <- 1        # PHU temperature-averaging window (years; 1 = per
 smooth_window       <- 31L    # global daily-climatology smoothing window (days; odd = symmetric)
 cross_min_duration  <- 5L     # min sustained-excursion days for the hot-day temperature crossings (1 = off;
                               # the doy_wet1 LEVEL crossing is now guarded by cross_min_area alone)
-cross_min_area      <- c(2,3) # wet-end LEVEL crossing deficit-days budget, HYSTERETIC c(lo,hi): prev-found uses
-                              # lo (stay found), prev-absent uses hi (become found) -> damps existence flicker
+cross_min_area      <- c(2,6) # wet-end LEVEL crossing deficit-days budget, HYSTERETIC c(lo,hi): prev-found uses
+                              # lo (stay found), prev-absent uses hi (become found) -> damps existence flicker.
+                              # Widened lo/hi band 2/3 -> 2/6 (strict hi=6 to flip INTO found; lenient lo=2 to stay):
+                              # trades some decadal trend-tracking for less wet-end existence flicker (accepted).
+temp_cross_min_area <- c(2,6) # reproductive hot-day crossing (hd_temp_opt) degree-days budget, HYSTERETIC c(lo,hi),
+                              # temperature analogue of cross_min_area. Damps hd_temp_opt EXISTENCE flicker where the
+                              # warm plateau grazes temp_opt_rphase (subtropical WW, e.g. Botswana). Widened to 2/6
+                              # (strict hi=6 to flip INTO found; lenient lo=2 to stay) -- cut WW topt<->topt jitter ~31%;
+                              # genuinely-warm cells (area >> 6) unaffected. Rice's spring-crop down-crossing (large warm
+                              # season) does not respond. 0 = off.
 
 # Wettest-window hysteresis (distance-weighted, max-normalised selection). For the
 # ~57% of PREC/PRECTEMP cells with a near-tied second 120-day P/PET peak, the plain

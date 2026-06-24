@@ -74,6 +74,17 @@
 #' (\code{doy_wet1}) exist? Selects the Schmitt bound of \code{cross_min_area} (found -> lenient
 #' \code{lo}, absent -> strict \code{hi}). The resolved value is carried forward in the
 #' \code{attr(., "harv_hi")} 6x bit. \code{NA} on the first year uses the strict bound.
+#' @param temp_cross_min_area Integrated-excursion (degree-days) budget for the reproductive-phase
+#' hot-day temperature crossing (\code{hd_temp_opt}: \code{daily_temp} vs \code{temp_opt_rphase}) --
+#' the temperature analogue of \code{cross_min_area}, magnitude-weighting the crossing so a smoothed
+#' temperature that merely grazes \code{temp_opt_rphase} must persist far longer to register a hot
+#' season. Damps the \code{hd_temp_opt} EXISTENCE flicker in marginal cells whose warm plateau sits at
+#' the threshold (e.g. subtropical winter wheat). A length-2 \code{c(lo, hi)} HYSTERETIC pair like
+#' \code{cross_min_area}: a previously-FOUND crossing (\code{prev_topt_found}) uses the lenient
+#' \code{lo}, a previously-ABSENT one the strict \code{hi}. Scalar = no hysteresis; default 0 = off.
+#' @param prev_topt_found Logical hysteresis state from last year (or \code{NA}): did the reproductive
+#' hot-day crossing (\code{doy_opt_rp}) exist? Selects the Schmitt bound of \code{temp_cross_min_area}.
+#' Carried forward in the \code{attr(., "harv_hi")} 24x bit. \code{NA} on the first year = strict.
 #'
 #' @seealso getCropParam, calcClimatology, calcSowingDate, calcCropCalendars
 #' @export
@@ -92,7 +103,9 @@ calcHarvestDateVector <- function(croppar,
                                   prev_rw1 = NA_integer_,
                                   harv_exist_eps = 0,
                                   prev_wet_near = NA,
-                                  prev_wetend_found = NA
+                                  prev_wetend_found = NA,
+                                  temp_cross_min_area = 0,
+                                  prev_topt_found = NA
                                   ) {
 
   # Extract individual parameter names and values
@@ -265,6 +278,15 @@ calcHarvestDateVector <- function(croppar,
   # smooth_window as warmest_day and all other reductions.
   daily_temp_x <- .circRoll(daily_temp, smooth_window, "center", mean = TRUE)
 
+  # HYSTERETIC degree-days budget for the reproductive hot-day crossing (hd_temp_opt), the temperature
+  # analogue of cross_min_area: a previously-FOUND crossing uses the lenient lo, a previously-ABSENT one
+  # the strict hi, so a smoothed temperature that merely grazes temp_opt_rphase (subtropical warm plateau
+  # sitting at the threshold) cannot flip the hot-season's existence year to year. temp_cross_min_area = 0
+  # (default) leaves it off (the crossing falls back to the min_duration guard alone).
+  topt_area_lo  <- temp_cross_min_area[1L]
+  topt_area_hi  <- temp_cross_min_area[length(temp_cross_min_area)]
+  topt_area_eff <- if (isTRUE(prev_topt_found)) topt_area_lo else topt_area_hi   # NA / FALSE -> strict (hi)
+
   # First hot day ---- (anchored at sowing via sow_anchor, like the wet-end crossings above, so
   # a spurious early-DOY hot-day crossing cannot pre-empt the genuine first-after-sowing one.
   # The +365 / sort below still renumbers a wrapped crossing onto the sowing..sowing+365 axis
@@ -272,7 +294,7 @@ calcHarvestDateVector <- function(croppar,
   # when sow_anchor already returns a crossing >= sowing.)
   doy_exceed_opt_rp <- calcDoyCrossThreshold(
     daily_temp_x, temp_opt_rphase, min_duration = cross_min_duration,
-    from = sow_anchor
+    from = sow_anchor, min_area = topt_area_eff
     )[["doy_cross_up"]]
   idx <- which(doy_exceed_opt_rp < sowing_date & doy_exceed_opt_rp != -9999)
   doy_exceed_opt_rp[idx] <- doy_exceed_opt_rp[idx] + ndays_year
@@ -283,7 +305,7 @@ calcHarvestDateVector <- function(croppar,
     daily_temp_x,
     temp_opt_rphase,
     min_duration = cross_min_duration,
-    from = sow_anchor
+    from = sow_anchor, min_area = topt_area_eff
     )[["doy_cross_down"]]
   idx <- which(doy_below_opt_rp < sowing_date & doy_below_opt_rp != -9999)
   doy_below_opt_rp[idx] <- doy_below_opt_rp[idx] + ndays_year
@@ -300,6 +322,9 @@ calcHarvestDateVector <- function(croppar,
       sowing_season == "winter", doy_opt_rp, doy_opt_rp+rphase_duration
       )
   }
+  # Carry the reproductive hot-day EXISTENCE for next year's temp_cross_min_area Schmitt: the 24x bit
+  # of harv_hi (rw1 + 6*wetend_found + 12*wet_near + 24*topt_found).
+  harv_hi <- harv_hi + 24L * as.integer(doy_opt_rp != -9999)
 
   # If harvest date < sowing date, it occurs the following year, so add 365 days
   hd_wetseas    <- ifelse(
@@ -318,10 +343,11 @@ calcHarvestDateVector <- function(croppar,
   names(hd_vector) <- c("hd_first", "hd_maxrp", "hd_last",
                         "hd_wetseas", "hd_temp_base", "hd_temp_opt")
 
-  # Moisture-state hysteresis carried forward by calcCropCalendars: the high part of the packed
-  # harvest state. 12*wet_near (the always-on wet-near gate, carried as prev_wet_near for the Schmitt
-  # window) + 6*wetend_found (did doy_wet1 exist, carried as prev_wetend_found for the min_area
-  # Schmitt) + rw1 (0/1/2 DRY/NORMAL/WET regime, cc_regime path only; 0 otherwise).
+  # Hysteresis state carried forward by calcCropCalendars: the high part of the packed harvest state.
+  # 24*topt_found (did the reproductive hot-day crossing exist, carried as prev_topt_found for the
+  # temp_cross_min_area Schmitt) + 12*wet_near (the always-on wet-near gate, carried as prev_wet_near for
+  # the Schmitt window) + 6*wetend_found (did doy_wet1 exist, carried as prev_wetend_found for the
+  # cross_min_area Schmitt) + rw1 (0/1/2 DRY/NORMAL/WET regime, cc_regime path only; 0 otherwise).
   attr(hd_vector, "harv_hi") <- harv_hi
   return(hd_vector)
 }

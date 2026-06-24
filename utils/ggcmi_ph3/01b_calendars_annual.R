@@ -36,6 +36,7 @@ if (!exists("wet_window_eps"))        wet_window_eps        <- 0
 if (!exists("wet_window_decay"))      wet_window_decay      <- 0.3
 if (!exists("cross_min_duration"))    cross_min_duration    <- 1L
 if (!exists("cross_min_area"))        cross_min_area        <- 0
+if (!exists("temp_cross_min_area"))   temp_cross_min_area   <- 0
 if (!exists("smooth_window"))         smooth_window         <- 31L
 if (!exists("seas_eps"))              seas_eps              <- 0
 if (!exists("seas_mtemp_margin"))     seas_mtemp_margin     <- 1
@@ -99,8 +100,8 @@ if (!is.null(years_env)) { keep <- cyears %in% years_env; cfiles <- cfiles[keep]
 if (length(cyears) == 0) stop("No climatology files match (run 01a; check YEARS).")
 emit_years <- cyears
 nE <- length(emit_years)
-cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d cross_min_area=%s smooth_window=%d seas_eps=%g harv_exist_eps=%g harv_tmax_margin=%g winter_margin=%g winter_cold_margin=%g wet_window=%d/%d\n",
-            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, paste(cross_min_area, collapse="/"), smooth_window, seas_eps, harv_exist_eps, harv_tmax_margin, winter_margin, winter_cold_margin,
+cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d cross_min_area=%s temp_cross_min_area=%s smooth_window=%d seas_eps=%g harv_exist_eps=%g harv_tmax_margin=%g winter_margin=%g winter_cold_margin=%g wet_window=%d/%d\n",
+            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, paste(cross_min_area, collapse="/"), paste(temp_cross_min_area, collapse="/"), smooth_window, seas_eps, harv_exist_eps, harv_tmax_margin, winter_margin, winter_cold_margin,
             as.integer(getOption("cc_wet_window_lo", 10L)), as.integer(getOption("cc_wet_window_hi", 20L))))
 
 # Crops + pre-extracted parameters. CROPS env (rb_cal names, comma-separated, e.g.
@@ -135,6 +136,7 @@ computeYear <- function(clim, prev_wet, prev_seas, prev_harv, prev_winter) {
                              wet_window_decay = wet_window_decay,
                              cross_min_duration = cross_min_duration,
                              cross_min_area = cross_min_area,
+                             temp_cross_min_area = temp_cross_min_area,
                              smooth_window = smooth_window,
                              prev_seas = prev_seas[j], seas_eps = seas_eps,
                              seas_mtemp_margin = seas_mtemp_margin,

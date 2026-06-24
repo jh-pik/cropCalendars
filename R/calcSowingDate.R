@@ -275,9 +275,16 @@ calcSowingDate <- function(croppar,
       sowing_season <- "winter"
 
     } else if (firstwinterdoy <= earliest_sdate &
-               coldest_t > temp_fall &
                firstwintermonth != DEFAULT_MONTH) {
 
+      # firstwinterdoy is a REAL autumn date (warm regime: coldest_doy-75; mild regime: temp_fall
+      # down-crossing) but falls on/before the earliest allowed sowing date -> CLAMP to earliest_sdate
+      # and winter-sow. The former `coldest_t > temp_fall` guard restricted this clamp to warm cells, so a
+      # MILD vernalizing cell whose autumn temp_fall crossing grazed earliest_sdate (wobbling +-1 day) was
+      # kicked to the spring fallback instead -- a half-year winter<->spring flip on a one-day crossing
+      # wobble, the dominant E-Europe/Ukraine WW sowing-flicker source. Cold cells (coldest_t < cold_thr)
+      # already set firstwinterdoy = -9999 above, so firstwintermonth == DEFAULT_MONTH routes them to the
+      # spring fallback below; this clamp only catches viable (warm/mild) winter cells.
       sowing_month  <- earliest_smonth
       sowing_doy    <- earliest_sdate
       sowing_season <- "winter"

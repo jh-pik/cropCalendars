@@ -16,6 +16,7 @@ calcCropCalendars(
   wet_window_decay = 0.3,
   cross_min_duration = 1L,
   cross_min_area = 0,
+  temp_cross_min_area = 0,
   smooth_window = 31L,
   prev_seas = NA_character_,
   seas_eps = 0,
@@ -71,6 +72,13 @@ forwarded to \code{calcSowingDate}/\code{calcHarvestDateVector} ->
 \code{calcHarvestDateVector} for the wet-season-end level crossing only -- magnitude-weights
 the persistence guard so a grazing P/PET crossing must persist far longer to count
 (default 0 = off). See \code{?calcDoyCrossThreshold} (\code{min_area}).}
+
+\item{temp_cross_min_area}{Non-negative integrated-excursion (degree-days) budget forwarded to
+\code{calcHarvestDateVector} for the reproductive hot-day crossing (\code{hd_temp_opt}) -- the
+temperature analogue of \code{cross_min_area}, damping the \code{hd_temp_opt} existence flicker in
+marginal cells whose warm plateau grazes \code{temp_opt_rphase} (subtropical winter wheat). A
+length-2 \code{c(lo, hi)} HYSTERETIC pair carried per cell AND per crop (the 24x bit of
+\code{prev_harv}); default 0 = off. See \code{?calcHarvestDateVector}.}
 
 \item{smooth_window}{Integer day-window for the daily-climatology smoothing -- the SINGLE
 global window applied to BOTH the threshold-crossing inputs (spring/fall temperature,

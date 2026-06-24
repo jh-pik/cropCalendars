@@ -33,6 +33,12 @@
 #' \code{calcHarvestDateVector} for the wet-season-end level crossing only -- magnitude-weights
 #' the persistence guard so a grazing P/PET crossing must persist far longer to count
 #' (default 0 = off). See \code{?calcDoyCrossThreshold} (\code{min_area}).
+#' @param temp_cross_min_area Non-negative integrated-excursion (degree-days) budget forwarded to
+#' \code{calcHarvestDateVector} for the reproductive hot-day crossing (\code{hd_temp_opt}) -- the
+#' temperature analogue of \code{cross_min_area}, damping the \code{hd_temp_opt} existence flicker in
+#' marginal cells whose warm plateau grazes \code{temp_opt_rphase} (subtropical winter wheat). A
+#' length-2 \code{c(lo, hi)} HYSTERETIC pair carried per cell AND per crop (the 24x bit of
+#' \code{prev_harv}); default 0 = off. See \code{?calcHarvestDateVector}.
 #' @param smooth_window Integer day-window for the daily-climatology smoothing -- the SINGLE
 #' global window applied to BOTH the threshold-crossing inputs (spring/fall temperature,
 #' hot-day, wet-season-end P/PET) AND the daily reductions (coldest/warmest-window means and
@@ -92,6 +98,7 @@ calcCropCalendars <- function(lon                   = NULL,
                               wet_window_decay      = 0.3,
                               cross_min_duration    = 1L,
                               cross_min_area        = 0,
+                              temp_cross_min_area   = 0,
                               smooth_window         = 31L,
                               prev_seas             = NA_character_,
                               seas_eps              = 0,
@@ -184,16 +191,18 @@ calcCropCalendars <- function(lon                   = NULL,
 
   # Harvest date
   # Harvest-rule hysteresis state carried from last year, packed into one integer:
-  # harv_state = tclass(0-2) + 3*harv_hi, where harv_hi = rw1(0-2) + 6*wf(0-1) + 12*wn(0-1) encodes the
-  # level wet-end EXISTENCE regime (rw1: 0 absent-DRY / 1 found / 2 absent-WET, cc_regime path only),
-  # the wet-end-found flag (wf, for the min_area Schmitt) and the wet-near-sowing flag (wn, the
-  # always-on wet-near gate). Each bit sits at a fixed place (wf at /6%%2, wn at /12) so the decode is
+  # harv_state = tclass(0-2) + 3*harv_hi, where harv_hi = rw1(0-2) + 6*wf(0-1) + 12*wn(0-1) + 24*tf(0-1)
+  # encodes the level wet-end EXISTENCE regime (rw1: 0 absent-DRY / 1 found / 2 absent-WET, cc_regime path
+  # only), the wet-end-found flag (wf, for the cross_min_area Schmitt), the wet-near-sowing flag (wn, the
+  # always-on wet-near gate) and the reproductive hot-day-found flag (tf, for the temp_cross_min_area
+  # Schmitt). Each bit sits at a fixed place (wf at /6%%2, wn at /12%%2, tf at /24) so the decode is
   # path-independent.
   prev_tclass        <- if (is.na(prev_harv)) NA_integer_ else prev_harv %% 3L
   prev_hi            <- if (is.na(prev_harv)) NA_integer_ else prev_harv %/% 3L
   prev_rw1           <- if (is.na(prev_hi)) NA_integer_ else prev_hi %% 3L
   prev_wetend_found  <- if (is.na(prev_hi)) NA else as.logical((prev_hi %/% 6L) %% 2L)
-  prev_wet_near      <- if (is.na(prev_hi)) NA else as.logical(prev_hi %/% 12L)
+  prev_wet_near      <- if (is.na(prev_hi)) NA else as.logical((prev_hi %/% 12L) %% 2L)
+  prev_topt_found    <- if (is.na(prev_hi)) NA else as.logical(prev_hi %/% 24L)
 
   harvest_rule  <- calcHarvestRule(
     croppar      = crop_parameters,
@@ -222,7 +231,9 @@ calcCropCalendars <- function(lon                   = NULL,
     prev_rw1          = prev_rw1,
     harv_exist_eps    = harv_exist_eps,
     prev_wet_near     = prev_wet_near,
-    prev_wetend_found = prev_wetend_found
+    prev_wetend_found = prev_wetend_found,
+    temp_cross_min_area = temp_cross_min_area,
+    prev_topt_found   = prev_topt_found
   )
 
   harvest <- calcHarvestDate(
