@@ -32,7 +32,7 @@ for g in "${gcms[@]}"; do
       -A "${ACCOUNT}" --chdir="${WD}" --qos=${QOS} \
       -o logs/cc_clm_${g}_${s}-%j.out \
       --export=ALL,EMIT_STEP=1,YEARS="${YEARS}",SAVE_SEED="${SAVE}" \
-      --wrap="source ${WD}/env.sh; load_r_env; export HDF5_USE_FILE_LOCKING=FALSE; Rscript 01a_climatology_annual.R ${g} ${s}")
+      --wrap="source ${WD}/env.sh; load_r_env; Rscript 01a_climatology_annual.R ${g} ${s}")
     [ "$s" = historical ] && hist_jid=$jid
     echo "submitted cc_clm_${g}_${s} -> ${jid} (SAVE_SEED=${SAVE} ${DEP})"
   done

@@ -28,7 +28,7 @@ for g in "${gcms[@]}"; do
       -A "${ACCOUNT}" --chdir="${WD}" --qos=${QOS} \
       -o logs/cc_annual_${g}_${s}-%j.out \
       --export=ALL,EMIT_STEP=1 \
-      --wrap="source ${WD}/env.sh; load_r_env; export HDF5_USE_FILE_LOCKING=FALSE R_GC_MEM_GROW=0; Rscript 01_compute_annual_calendars.R ${g} ${s} ${CORES}"
+      --wrap="source ${WD}/env.sh; load_r_env; export R_GC_MEM_GROW=0; Rscript 01_compute_annual_calendars.R ${g} ${s} ${CORES}"
     echo "submitted cc_ann_${g}_${s} (${CORES} cores, ${QOS})"
   done
 done

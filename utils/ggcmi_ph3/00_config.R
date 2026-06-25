@@ -92,6 +92,12 @@ temp_cross_min_area <- c(2,8) # reproductive hot-day crossing (hd_temp_opt) degr
 wet_window_eps    <- 0.5      # wettest-window weight FLOOR = 1-eps (0 = plain argmax); far peak must be >1/(1-eps)x wetter to win
 wet_window_decay  <- 0.3      # Gaussian decay scale of the distance weight (units of half-year; smaller = stickier)
 
+# WET-NEAR GATE hysteretic Schmitt window (days after sowing scanned for the wet-season decision; the
+# package option default is 10/20). 20/40 is the validated config -- locked here so no launch path can
+# silently fall back to 10/20. Applied as the default in 01b (WET_WINDOW_LO/HI env still overrides for A/B).
+wet_window_lo     <- 20L
+wet_window_hi     <- 40L
+
 # Seasonality-classifier hysteresis (threshold deadband). ~18% of cells flip their
 # seasonality CLASS year to year (grazing the CV_prec/CV_temp/min_temp thresholds),
 # which swaps the whole sowing rule. seas_eps relaxes the relative CV thresholds toward

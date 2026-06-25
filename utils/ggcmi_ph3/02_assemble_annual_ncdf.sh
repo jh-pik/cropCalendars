@@ -17,7 +17,7 @@ for gc in "${gcms[@]}"; do
         sbatch --ntasks=1 --cpus-per-task=1 --mem=8G -t 00:20:00 -J nc_annual \
           -A "${ACCOUNT}" --chdir="${WD}" --qos=priority \
           -o logs/nc_annual_${gc}_${sc}_${cr}_${ir}-%j.out \
-          --wrap="source $(dirname "$(readlink -f "$0")")/env.sh; load_r_env; export HDF5_USE_FILE_LOCKING=FALSE; Rscript 02_assemble_annual_ncdf.R ${gc} ${sc} ${cr} ${ir}"
+          --wrap="source $(dirname "$(readlink -f "$0")")/env.sh; load_r_env; Rscript 02_assemble_annual_ncdf.R ${gc} ${sc} ${cr} ${ir}"
       done
     done
   done

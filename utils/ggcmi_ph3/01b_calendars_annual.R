@@ -75,8 +75,10 @@ if (Sys.getenv("HARV_EXIST_EPS") != "") {
 # sowing, else it falls to the ppet_min floor tier and then hd_first. (WET_NEAR_SUPPRESS is obsolete --
 # the gate is now the default rule, not a toggle -- and is ignored if set.)
 # USE_WET2 is obsolete -- the doy_wet2 TREND wet-end estimate was retired (see NEWS) -- and is ignored.
-if (Sys.getenv("WET_WINDOW_LO") != "") options(cc_wet_window_lo = as.integer(Sys.getenv("WET_WINDOW_LO")))
-if (Sys.getenv("WET_WINDOW_HI") != "") options(cc_wet_window_hi = as.integer(Sys.getenv("WET_WINDOW_HI")))
+options(cc_wet_window_lo = if (Sys.getenv("WET_WINDOW_LO") != "") as.integer(Sys.getenv("WET_WINDOW_LO"))
+                           else if (exists("wet_window_lo")) as.integer(wet_window_lo) else 10L)
+options(cc_wet_window_hi = if (Sys.getenv("WET_WINDOW_HI") != "") as.integer(Sys.getenv("WET_WINDOW_HI"))
+                           else if (exists("wet_window_hi")) as.integer(wet_window_hi) else 20L)
 # CROSS_MIN_AREA: integrated-deficit (deficit-days) budget for the wet-end LEVEL crossing -- a
 # grazing P/PET crossing must accumulate sum(ppet_ratio - daily_ppet) >= this to count (default 0).
 # A HYSTERETIC (Schmitt) pair "lo,hi" damps wet-end existence flicker (prev-found uses lo, prev-absent
