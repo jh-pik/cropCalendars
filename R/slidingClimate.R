@@ -33,7 +33,7 @@ initClimateRing <- function(ncells, window, pet_method = c("fao56", "pt")) {
     pos        = 0L,                       # index of the most recently written slot
     count      = 0L,                       # years currently in the window
     # Running field-wise sum of the slots, as a zeroed daily_only engine accumulator:
-    # the ring carries only the daily fields (no monthly sums, no dppet); the monthly
+    # the ring carries only the daily fields (no monthly sums); the monthly
     # seasonality stats are reconstructed from the daily climatology downstream.
     run        = initClimateAccum(ncells, pet_method, daily_only = TRUE)
   )

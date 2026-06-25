@@ -58,14 +58,12 @@ orbital path) are not passed to \code{calcPET_FAO56}, which uses full
 24 h fluxes and requires no geometric daylength.}
 }
 \value{
-list with five monthly vectors (length 12) and two daily vectors
+list with five monthly vectors (length 12) and three daily vectors
 (length 365):
 \describe{
   \item{mtemp, mprec, mpet, mppet, mppet_diff}{Monthly climate (length 12).}
   \item{dtemp}{Climatological daily mean temperature (°C), one value per
     DOY 1–365, averaged across years. Used by \code{calcDoyCrossThreshold}.}
-  \item{dppet}{Climatological daily P/PET ratio, one value per DOY 1–365,
-    averaged across years.}
   \item{dprec, dpet}{Climatological daily precipitation and PET (mm), one
     value per DOY 1–365, averaged across years. Used by \code{calcDoyWetMonth}
     and the wet-season-end harvest rule as a spike-free \eqn{\sum P / \sum PET}.}

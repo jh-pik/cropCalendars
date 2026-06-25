@@ -31,8 +31,8 @@ finalizeClimate(acc)
 \code{"fao56"} (FAO-56 Penman-Monteith, calcPET_FAO56).}
 
 \item{daily_only}{If \code{TRUE}, accumulate and return only the daily fields
-(\code{dtemp}, \code{dprec}, \code{dpet}) -- the monthly aggregates and the daily
-P/PET sum (\code{dppet}) are neither allocated nor computed. Used by the sliding
+(\code{dtemp}, \code{dprec}, \code{dpet}) -- the monthly aggregates are neither
+allocated nor computed. Used by the sliding
 ring, whose only consumer reconstructs the monthly seasonality stats from the
 daily climatology downstream. Default \code{FALSE} = the full output.}
 
@@ -52,7 +52,7 @@ shape (see \code{calcClimatology}); \code{ps} may be scalar.}
 `initClimateAccum` returns an accumulator (a list of zeroed matrices);
   `finalizeClimate` returns the climate as a list of fields (vectors when
   `ncells == 1`, otherwise `[ncells x 12]` / `[ncells x 365]` matrices): the full
-  nine fields matching `calcClimatology()`, or only `dtemp`/`dprec`/`dpet` when
+  eight fields matching `calcClimatology()`, or only `dtemp`/`dprec`/`dpet` when
   the accumulator was built with `daily_only = TRUE`.
 }
 \description{
@@ -70,7 +70,7 @@ Aggregation (reproduces the previous `tapply`-based code):
 \itemize{
   \item monthly fields = mean over years of the per-year monthly statistic
         (mean temperature; summed precipitation, PET; summed P/PET ratio);
-  \item daily fields (`dtemp`, `dppet`) = per-DOY sum / per-DOY count over all
+  \item daily fields (`dtemp`, `dprec`, `dpet`) = per-DOY sum / per-DOY count over all
         days of all years, i.e. `tapply(., DOY, mean)` (the count is not uniform:
         `date_to_doy(skip_feb29 = TRUE)` folds Feb 29 onto DOY 59).
 }

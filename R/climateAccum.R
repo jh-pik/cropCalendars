@@ -14,7 +14,7 @@
 #' \itemize{
 #'   \item monthly fields = mean over years of the per-year monthly statistic
 #'         (mean temperature; summed precipitation, PET; summed P/PET ratio);
-#'   \item daily fields (`dtemp`, `dppet`) = per-DOY sum / per-DOY count over all
+#'   \item daily fields (`dtemp`, `dprec`, `dpet`) = per-DOY sum / per-DOY count over all
 #'         days of all years, i.e. `tapply(., DOY, mean)` (the count is not uniform:
 #'         `date_to_doy(skip_feb29 = TRUE)` folds Feb 29 onto DOY 59).
 #' }
@@ -23,14 +23,14 @@
 #' @param pet_method PET method, \code{"pt"} (Priestley-Taylor, calcPET) or
 #'   \code{"fao56"} (FAO-56 Penman-Monteith, calcPET_FAO56).
 #' @param daily_only If \code{TRUE}, accumulate and return only the daily fields
-#'   (\code{dtemp}, \code{dprec}, \code{dpet}) -- the monthly aggregates and the daily
-#'   P/PET sum (\code{dppet}) are neither allocated nor computed. Used by the sliding
+#'   (\code{dtemp}, \code{dprec}, \code{dpet}) -- the monthly aggregates are neither
+#'   allocated nor computed. Used by the sliding
 #'   ring, whose only consumer reconstructs the monthly seasonality stats from the
 #'   daily climatology downstream. Default \code{FALSE} = the full output.
 #' @return `initClimateAccum` returns an accumulator (a list of zeroed matrices);
 #'   `finalizeClimate` returns the climate as a list of fields (vectors when
 #'   `ncells == 1`, otherwise `[ncells x 12]` / `[ncells x 365]` matrices): the full
-#'   nine fields matching `calcClimatology()`, or only `dtemp`/`dprec`/`dpet` when
+#'   eight fields matching `calcClimatology()`, or only `dtemp`/`dprec`/`dpet` when
 #'   the accumulator was built with `daily_only = TRUE`.
 #' @name climateAccum
 #' @export
@@ -46,15 +46,13 @@ initClimateAccum <- function(ncells, pet_method = c("fao56", "pt"),
     nyears = 0L, pet_method = pet_method, ncells = ncells,
     daily_only = daily_only
   )
-  # The monthly accumulators (mtemp/mprec/mpet/mppet) and the daily P/PET sum (dppet)
-  # are only needed for the per-pixel calcClimatology() full output. The sliding
-  # ring runs daily_only -- it accumulates only the daily fields, and the seasonality
-  # monthly stats are reconstructed from the daily climatology downstream -- which
-  # also trims the ring's per-slot footprint.
+  # The monthly accumulators (mtemp/mprec/mpet/mppet) are only needed for the per-pixel
+  # calcClimatology() full output. The sliding ring runs daily_only -- it accumulates only
+  # the daily fields, and the seasonality monthly stats are reconstructed from the daily
+  # climatology downstream -- which also trims the ring's per-slot footprint.
   if (!daily_only) {
     acc$M_tas <- matrix(0, ncells, 12); acc$M_pr    <- matrix(0, ncells, 12)
     acc$M_pet <- matrix(0, ncells, 12); acc$M_ppet  <- matrix(0, ncells, 12)
-    acc$D_psum <- matrix(0, ncells, 365)
   }
   acc
 }
@@ -99,7 +97,6 @@ addYearClimate <- function(acc, temp, prec, dates,
 
   daily_only <- isTRUE(acc$daily_only)
   if (!daily_only) {
-    ppet <- prec / pmax(pet, 1e-6)
     for (m in 1:12) {
       dom     <- which(mon == m)
       pr_mon  <- rowSums(prec[, dom, drop = FALSE])
@@ -117,7 +114,6 @@ addYearClimate <- function(acc, temp, prec, dates,
     acc$D_tsum[,   d] <- acc$D_tsum[,   d] + temp[, k]
     acc$D_prsum[,  d] <- acc$D_prsum[,  d] + prec[, k]
     acc$D_petsum[, d] <- acc$D_petsum[, d] + pet[,  k]
-    if (!daily_only) acc$D_psum[, d] <- acc$D_psum[, d] + ppet[, k]
   }
   acc$D_cnt  <- acc$D_cnt + tabulate(doy, nbins = 365)
   acc$nyears <- acc$nyears + 1L
@@ -136,8 +132,8 @@ finalizeClimate <- function(acc) {
   # (smooth_window) is applied at rule time (see .circRoll and the rule stage),
   # so it is tunable without recomputing this climatology.
 
-  # daily_only accumulators (the sliding ring) carry no monthly sums and no dppet; the
-  # seasonality monthly stats are reconstructed from the daily climatology downstream.
+  # daily_only accumulators (the sliding ring) carry no monthly sums; the seasonality
+  # monthly stats are reconstructed from the daily climatology downstream.
   if (isTRUE(acc$daily_only)) {
     out <- list(dtemp = dtemp, dprec = dprec, dpet = dpet)
   } else {
@@ -146,9 +142,8 @@ finalizeClimate <- function(acc) {
     mpet       <- round(acc$M_pet  / acc$nyears, 5)
     mppet      <- round(acc$M_ppet / acc$nyears, 5)
     mppet_diff <- mppet - mppet[, c(2:12, 1), drop = FALSE]
-    dppet      <- sweep(acc$D_psum, 2, acc$D_cnt, "/")
     out <- list(mtemp = mtemp, mprec = mprec, mpet = mpet, mppet = mppet,
-                mppet_diff = mppet_diff, dtemp = dtemp, dppet = dppet,
+                mppet_diff = mppet_diff, dtemp = dtemp,
                 dprec = dprec, dpet = dpet)
   }
   if (acc$ncells == 1L) out <- lapply(out, as.vector) # match per-pixel contract
