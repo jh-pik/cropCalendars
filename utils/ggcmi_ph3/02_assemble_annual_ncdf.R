@@ -39,10 +39,10 @@ rb <- crop_ls[["rb_cal"]][cr]
 # Load the annual calendar first; the product year range comes from the file (set
 # by stage 01), NOT hardcoded -- so any scenario works (ssp 2015-2100, GSWP3
 # 1901-2019, ...). Rule-based crop: its own file; default crop (rb = NA): Maize's.
-load_annual <- function(crop_name) {
-  f <- Sys.glob(paste0(output_dir, "crop_calendars/annual/", scen, "/", gcm, "/",
-                       "annual_calendar_", crop_name, "_", gcm, "_", scen, "_*.Rdata"))[1]
-  if (is.na(f)) stop("annual calendar not found: ", crop_name)
+load_annual <- function(crop_name, scenario = scen, must = TRUE) {
+  f <- Sys.glob(paste0(output_dir, "crop_calendars/annual/", scenario, "/", gcm, "/",
+                       "annual_calendar_", crop_name, "_", gcm, "_", scenario, "_*.Rdata"))[1]
+  if (is.na(f)) { if (must) stop("annual calendar not found: ", crop_name) else return(NULL) }
   e <- new.env(); load(f, envir = e); e
 }
 e <- load_annual(if (!is.na(rb)) rb else "Maize")
@@ -110,10 +110,59 @@ pd[repl] <- ifelse(!is.na(sdg[repl]), sdg[repl], 0)
 md[repl] <- ifelse(!is.na(hdg[repl]), hdg[repl], 0)
 gp[repl] <- ifelse(pd[repl] <= md[repl], md[repl] - pd[repl], md[repl] + 365 - pd[repl])
 
+# Decadal REPRESENTATIVE sowing/harvest: for each cell and decade, take the sowing and harvest dates of
+# the year whose GROWING PERIOD is the median in that decade (the year closest to the decade's median
+# growing period), and broadcast them to every year of the decade -- the same value for each year in the
+# decade. Using an actual year's dates (not an average) avoids circular-mean artefacts on the DOYs.
+# Decades END in a year divisible by 10 (..1860, 1870, .., 2010, 2020). The first group absorbs the
+# pre-1851 lead-in (1850 -> the 1850-1860 group; the calendar is ~constant there anyway).
+decade <- pmax(0L, (years_nc - 1851L) %/% 10L)
+rep_from <- function(GP, SOW, MAT) {                               # median-growing-period representative per cell
+  med  <- apply(GP, 1, median, na.rm = TRUE)
+  pick <- apply(abs(GP - med), 1, function(x) if (all(is.na(x))) NA_integer_ else which.min(x))
+  ok   <- which(!is.na(pick)); sel <- cbind(ok, pick[ok])
+  list(ok = ok, sow = SOW[sel], mat = MAT[sel])
+}
+pd_med <- matrix(NA_real_, ncell, nyears); md_med <- matrix(NA_real_, ncell, nyears)
+for (d in unique(decade)) {
+  cols <- which(decade == d)
+  r    <- rep_from(gp[, cols, drop = FALSE], pd[, cols, drop = FALSE], md[, cols, drop = FALSE])
+  pd_med[r$ok, cols] <- r$sow                                      # broadcast across the decade's years
+  md_med[r$ok, cols] <- r$mat
+}
+
+# 2011-2020 decade: complete it with ssp245 (2015-2020) spliced onto historical (2011-2014), and apply
+# that single representative to whatever 2011-2020 years appear in THIS scenario -- i.e. the SAME
+# 2011-2020 representative across all scenarios. Fall back to historical 2011-2014 alone if ssp245 is
+# absent. (Rule-based cells only; default cells are forced constant just below.)
+g16 <- (2011L - 1851L) %/% 10L
+if (any(decade == g16) && !is.na(rb)) {
+  grab <- function(scenario, yr_lo, yr_hi) {
+    e2 <- load_annual(rb, scenario, must = FALSE); if (is.null(e2)) return(NULL)
+    yy <- as.integer(e2$emit_years); k <- which(yy >= yr_lo & yy <= yr_hi); if (!length(k)) return(NULL)
+    list(gp  = e2$cal[[paste0("gp_", irri)]][, k, drop = FALSE], sow = e2$cal$sow[, k, drop = FALSE],
+         mat = e2$cal[[paste0("maty_", irri)]][, k, drop = FALSE])
+  }
+  parts <- Filter(Negate(is.null), list(grab("historical", 2011, 2014), grab("ssp245", 2015, 2020)))
+  if (length(parts) && all(vapply(parts, function(p) nrow(p$gp) == ncell, logical(1)))) {
+    r <- rep_from(do.call(cbind, lapply(parts, `[[`, "gp")),
+                  do.call(cbind, lapply(parts, `[[`, "sow")),
+                  do.call(cbind, lapply(parts, `[[`, "mat")))
+    g16cols <- which(decade == g16)
+    pd_med[r$ok, g16cols] <- r$sow; md_med[r$ok, g16cols] <- r$mat
+  } else if (scen != "historical") {
+    cat("  NOTE: ssp245/historical 2011-2020 splice unavailable (grid/file); 2011-2020 uses in-scenario median\n")
+  }
+}
+
+# Default-date cells (GGCMI observed, broadcast over years): the representative is just that constant.
+pd_med[isdef] <- pd[isdef]; md_med[isdef] <- md[isdef]
+
 to_grid <- function(field) { A <- matrix(NA_real_, nlon * nlat, nyears); A[lin, ] <- field
   dim(A) <- c(nlon, nlat, nyears); A }
 AR <- list(planting_day = to_grid(pd), maturity_day = to_grid(md), growing_period = to_grid(gp),
-           seasonality = to_grid(seas), harvest_reason = to_grid(hr), planting_season = to_grid(ss))
+           seasonality = to_grid(seas), harvest_reason = to_grid(hr), planting_season = to_grid(ss),
+           "planting_day-median" = to_grid(pd_med), "maturity_day-median" = to_grid(md_med))
 
 # ------------------------------------ #
 # Write the DRS-compliant NetCDF (one pass).
@@ -131,7 +180,9 @@ vdef <- list(
   growing_period  = def("growing_period",  "days",        "Rule-based growing period duration (annual)"),
   seasonality     = def("seasonality",     "-", "Climate seasonality type, (1=No Seas; 2=Prec; 3=PrecTemp; 4=Temp; 5=TempPrec)"),
   harvest_reason  = def("harvest_reason",  "-", "Rule triggering harvest (1=GPmin; 2=GPmed; 3=GPmax; 4=Wstress; 5=Topt; 6=Thigh)"),
-  planting_season = def("planting_season", "days", "Sowing season (1=Winter; 2=Spring)"))
+  planting_season = def("planting_season", "days", "Sowing season (1=Winter; 2=Spring)"),
+  "planting_day-median" = def("planting_day-median", "day of year", "Decadal representative sowing date: sowing of the year with the median growing period in the decade (same value for each year of the decade)"),
+  "maturity_day-median" = def("maturity_day-median", "day of year", "Decadal representative harvest date: harvest of the year with the median growing period in the decade (same value for each year of the decade)"))
 
 ncout <- nc_create(ncfname, vdef, force_v4 = TRUE, verbose = FALSE)
 for (v in names(vdef)) {
@@ -147,7 +198,7 @@ ncatt_put(ncout, 0, "Note", paste("The unit of the time dimension is calendar ye
           "If in a year (t), plant-day > maty-day, maty-day occurs the following year (t+1)."))
 ncatt_put(ncout, 0, "Crop", paste0(cro, "_", irri))
 ncatt_put(ncout, 0, "Institution", "Potsdam Institute for Climate Impact Research (PIK), Germany")
-ncatt_put(ncout, 0, "History", paste0("Created ", format(Sys.time(), "%Y-%m-%d"),
-          " by cropCalendars annual sliding-window pipeline (30-yr window slid by 1 year)."))
+ncatt_put(ncout, 0, "History", paste0("Created by Jens Heinke on ", format(Sys.time(), "%Y-%m-%d"),
+          " with the cropCalendars annual sliding-window pipeline (30-yr window slid by 1 year)."))
 nc_close(ncout)
 cat("saved", ncfname, "\n"); print(Sys.time() - stime)
