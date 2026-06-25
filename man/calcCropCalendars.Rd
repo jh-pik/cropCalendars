@@ -17,6 +17,7 @@ calcCropCalendars(
   cross_min_duration = 1L,
   cross_min_area = 0,
   temp_cross_min_area = 0,
+  wet_near_min_area = 0,
   smooth_window = 31L,
   prev_seas = NA_character_,
   seas_eps = 0,
@@ -79,6 +80,11 @@ temperature analogue of \code{cross_min_area}, damping the \code{hd_temp_opt} ex
 marginal cells whose warm plateau grazes \code{temp_opt_rphase} (subtropical winter wheat). A
 length-2 \code{c(lo, hi)} HYSTERETIC pair carried per cell AND per crop (the 24x bit of
 \code{prev_harv}); default 0 = off. See \code{?calcHarvestDateVector}.}
+
+\item{wet_near_min_area}{Non-negative integrated-excursion budget (default 0 = off) for the wet-near
+gate, forwarded to \code{calcHarvestDateVector}. Replaces the brittle single-day max test with an
+area-above-threshold test so a thin P/PET touch reads as NOT wet; \code{c(lo, hi)} HYSTERETIC on
+\code{prev_wet_near}. Chiefly affects Rice. See \code{?calcHarvestDateVector}.}
 
 \item{smooth_window}{Integer day-window for the daily-climatology smoothing -- the SINGLE
 global window applied to BOTH the threshold-crossing inputs (spring/fall temperature,

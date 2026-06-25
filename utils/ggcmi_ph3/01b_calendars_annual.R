@@ -43,6 +43,7 @@ if (!exists("seas_mtemp_margin"))     seas_mtemp_margin     <- 1
 if (!exists("harv_ppet_eps"))         harv_ppet_eps         <- 0
 if (!exists("harv_exist_eps"))        harv_exist_eps        <- 0
 if (!exists("harv_tmax_margin"))      harv_tmax_margin      <- 0
+if (!exists("wet_near_min_area"))     wet_near_min_area     <- 0
 if (!exists("winter_margin"))         winter_margin         <- 0
 if (!exists("winter_cold_margin"))    winter_cold_margin    <- 0
 
@@ -85,6 +86,9 @@ if (Sys.getenv("CROSS_MIN_AREA") != "")
 # CROSS_MIN_DUR: min sustained-excursion days for the hot-day temperature crossings (the wet-end
 # doy_wet1 is guarded by cross_min_area alone). Default 1 = off.
 if (Sys.getenv("CROSS_MIN_DUR") != "") cross_min_duration <- as.integer(Sys.getenv("CROSS_MIN_DUR"))
+# WET_NEAR_MIN_AREA: integrated-area budget for the wet-near gate (c(lo,hi) "lo,hi"); overrides config.
+if (Sys.getenv("WET_NEAR_MIN_AREA") != "")
+  wet_near_min_area <- as.numeric(strsplit(Sys.getenv("WET_NEAR_MIN_AREA"), ",")[[1]])
 out_suffix <- Sys.getenv("OUT_SUFFIX", "")
 
 clim_dir <- paste0(output_dir, "/crop_calendars/annual_climatology/", scen, "/", gcm, "/")
@@ -100,8 +104,8 @@ if (!is.null(years_env)) { keep <- cyears %in% years_env; cfiles <- cfiles[keep]
 if (length(cyears) == 0) stop("No climatology files match (run 01a; check YEARS).")
 emit_years <- cyears
 nE <- length(emit_years)
-cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d cross_min_area=%s temp_cross_min_area=%s smooth_window=%d seas_eps=%g harv_exist_eps=%g harv_tmax_margin=%g winter_margin=%g winter_cold_margin=%g wet_window=%d/%d\n",
-            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, paste(cross_min_area, collapse="/"), paste(temp_cross_min_area, collapse="/"), smooth_window, seas_eps, harv_exist_eps, harv_tmax_margin, winter_margin, winter_cold_margin,
+cat(sprintf("\n%s %s | %d climatology years (%d..%d) cores=%d | wet_eps=%g wet_decay=%g cross_min_dur=%d cross_min_area=%s temp_cross_min_area=%s smooth_window=%d seas_eps=%g harv_exist_eps=%g harv_tmax_margin=%g wet_near_min_area=%s winter_margin=%g winter_cold_margin=%g wet_window=%d/%d\n",
+            gcm, scen, nE, min(emit_years), max(emit_years), ncores, wet_window_eps, wet_window_decay, cross_min_duration, paste(cross_min_area, collapse="/"), paste(temp_cross_min_area, collapse="/"), smooth_window, seas_eps, harv_exist_eps, harv_tmax_margin, paste(wet_near_min_area, collapse="/"), winter_margin, winter_cold_margin,
             as.integer(getOption("cc_wet_window_lo", 10L)), as.integer(getOption("cc_wet_window_hi", 20L))))
 
 # Crops + pre-extracted parameters. CROPS env (rb_cal names, comma-separated, e.g.
@@ -137,6 +141,7 @@ computeYear <- function(clim, prev_wet, prev_seas, prev_harv, prev_winter) {
                              cross_min_duration = cross_min_duration,
                              cross_min_area = cross_min_area,
                              temp_cross_min_area = temp_cross_min_area,
+                             wet_near_min_area = wet_near_min_area,
                              smooth_window = smooth_window,
                              prev_seas = prev_seas[j], seas_eps = seas_eps,
                              seas_mtemp_margin = seas_mtemp_margin,

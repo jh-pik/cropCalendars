@@ -22,7 +22,9 @@ calcHarvestDateVector(
   prev_wet_near = NA,
   prev_wetend_found = NA,
   temp_cross_min_area = 0,
-  prev_topt_found = NA
+  prev_topt_found = NA,
+  wet_near_min_area = 0,
+  prev_floor_found = NA
 )
 }
 \arguments{
@@ -112,6 +114,21 @@ the threshold (e.g. subtropical winter wheat). A length-2 \code{c(lo, hi)} HYSTE
 \item{prev_topt_found}{Logical hysteresis state from last year (or \code{NA}): did the reproductive
 hot-day crossing (\code{doy_opt_rp}) exist? Selects the Schmitt bound of \code{temp_cross_min_area}.
 Carried forward in the \code{attr(., "harv_hi")} 24x bit. \code{NA} on the first year = strict.}
+
+\item{wet_near_min_area}{Non-negative integrated-excursion budget (default 0 = off) for the wet-near
+gate: instead of \code{any(daily_ppet[window] >= threshold)} (a brittle single-day MAX that flips on
+the P/PET peak grazing the threshold), require \code{sum(daily_ppet[window] - threshold)} over the
+above-threshold days to reach the budget -- so a thin touch (area ~0) reads as NOT wet. A length-2
+\code{c(lo, hi)} HYSTERETIC pair like \code{cross_min_area}: a previously-wet cell stays wet at the
+lenient \code{lo}, a previously-dry one needs the strict \code{hi}. Reuses \code{prev_wet_near} (no
+extra state). Chiefly affects Rice (\code{ppet_ratio = 1.0}, sown on the descending limb of a
+winter-wet climate so the window straddles the 1.0 crossing).}
+
+\item{prev_floor_found}{Logical hysteresis state from last year (or \code{NA}): did the TIER-2
+\code{ppet_min} floor dry-down (\code{floor_end}) exist? Selects the Schmitt bound of
+\code{cross_min_area} for the floor crossing (the full parallel of \code{prev_wetend_found} for the
+\code{ppet_ratio} crossing). Carried forward in the \code{attr(., "harv_hi")} 48x bit. Only the floor
+tier (Rice, \code{ppet_min < ppet_ratio}) exercises it. \code{NA} on the first year = strict.}
 }
 \description{
 Harvest reasons are the events that can trigger the harvest

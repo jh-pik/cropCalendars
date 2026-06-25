@@ -76,12 +76,12 @@ cross_min_area      <- c(2,6) # wet-end LEVEL crossing deficit-days budget, HYST
                               # lo (stay found), prev-absent uses hi (become found) -> damps existence flicker.
                               # Widened lo/hi band 2/3 -> 2/6 (strict hi=6 to flip INTO found; lenient lo=2 to stay):
                               # trades some decadal trend-tracking for less wet-end existence flicker (accepted).
-temp_cross_min_area <- c(2,6) # reproductive hot-day crossing (hd_temp_opt) degree-days budget, HYSTERETIC c(lo,hi),
+temp_cross_min_area <- c(2,8) # reproductive hot-day crossing (hd_temp_opt) degree-days budget, HYSTERETIC c(lo,hi),
                               # temperature analogue of cross_min_area. Damps hd_temp_opt EXISTENCE flicker where the
-                              # warm plateau grazes temp_opt_rphase (subtropical WW, e.g. Botswana). Widened to 2/6
-                              # (strict hi=6 to flip INTO found; lenient lo=2 to stay) -- cut WW topt<->topt jitter ~31%;
-                              # genuinely-warm cells (area >> 6) unaffected. Rice's spring-crop down-crossing (large warm
-                              # season) does not respond. 0 = off.
+                              # warm plateau grazes temp_opt_rphase (subtropical/continental WW: Botswana, Mediterranean,
+                              # Central Asia, N/NE China). 2/8 (strict hi=8 to flip INTO found; lenient lo=2 to stay) --
+                              # genuinely-warm cells (area >> 8) unaffected. Rice's spring-crop down-crossing (large warm
+                              # season) does not respond -- that residual was the floor tier, not topt. 0 = off.
 
 # Wettest-window hysteresis (distance-weighted, max-normalised selection). For the
 # ~57% of PREC/PRECTEMP cells with a near-tied second 120-day P/PET peak, the plain
@@ -124,6 +124,13 @@ seas_mtemp_margin <- 1        # seasonality min-temp threshold deadband (deg C)
 harv_ppet_eps     <- 0         # RETIRED/ignored (was always-wet test deadband)
 harv_exist_eps    <- 0         # superseded by the cross_min_area Schmitt (cc_regime path off)
 harv_tmax_margin  <- 1         # harvest-rule temp_max threshold deadband (deg C; 0 = off) -- thermal-class thermostat
+wet_near_min_area <- c(2,5)    # wet-near gate INTEGRATED budget c(lo,hi) HYSTERETIC (0 = off): the gate fires when
+                               # sum(daily_ppet[window]-ppet_ratio) over above-threshold days >= budget, instead of
+                               # any-day-above (a single-day max that flips on the peak grazing the threshold). Reads a
+                               # thin touch (area~0) as NOT wet -> latches the TIER1<->TIER2 selector. Big harvest win:
+                               # NE-China Maize monsoon -84%, neutral on the broad population; complements (does NOT
+                               # replace) the 20/40 window-WIDTH hysteresis (tested -- fixed window regresses the monsoon).
+                               # Keyed on prev_wet_near (no extra state). 2/5 paired with the ppet_min floor Schmitt.
 
 # Winter-regime sowing thermostat (winter-type / Winter_Wheat only). The winter regime is classified
 # warm / mild / cold by two coldest_t thresholds -- the warm boundary (basetemp.low) and the cold

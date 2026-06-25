@@ -85,6 +85,19 @@
 #' @param prev_topt_found Logical hysteresis state from last year (or \code{NA}): did the reproductive
 #' hot-day crossing (\code{doy_opt_rp}) exist? Selects the Schmitt bound of \code{temp_cross_min_area}.
 #' Carried forward in the \code{attr(., "harv_hi")} 24x bit. \code{NA} on the first year = strict.
+#' @param wet_near_min_area Non-negative integrated-excursion budget (default 0 = off) for the wet-near
+#' gate: instead of \code{any(daily_ppet[window] >= threshold)} (a brittle single-day MAX that flips on
+#' the P/PET peak grazing the threshold), require \code{sum(daily_ppet[window] - threshold)} over the
+#' above-threshold days to reach the budget -- so a thin touch (area ~0) reads as NOT wet. A length-2
+#' \code{c(lo, hi)} HYSTERETIC pair like \code{cross_min_area}: a previously-wet cell stays wet at the
+#' lenient \code{lo}, a previously-dry one needs the strict \code{hi}. Reuses \code{prev_wet_near} (no
+#' extra state). Chiefly affects Rice (\code{ppet_ratio = 1.0}, sown on the descending limb of a
+#' winter-wet climate so the window straddles the 1.0 crossing).
+#' @param prev_floor_found Logical hysteresis state from last year (or \code{NA}): did the TIER-2
+#' \code{ppet_min} floor dry-down (\code{floor_end}) exist? Selects the Schmitt bound of
+#' \code{cross_min_area} for the floor crossing (the full parallel of \code{prev_wetend_found} for the
+#' \code{ppet_ratio} crossing). Carried forward in the \code{attr(., "harv_hi")} 48x bit. Only the floor
+#' tier (Rice, \code{ppet_min < ppet_ratio}) exercises it. \code{NA} on the first year = strict.
 #'
 #' @seealso getCropParam, calcClimatology, calcSowingDate, calcCropCalendars
 #' @export
@@ -105,7 +118,9 @@ calcHarvestDateVector <- function(croppar,
                                   prev_wet_near = NA,
                                   prev_wetend_found = NA,
                                   temp_cross_min_area = 0,
-                                  prev_topt_found = NA
+                                  prev_topt_found = NA,
+                                  wet_near_min_area = 0,
+                                  prev_floor_found = NA
                                   ) {
 
   # Extract individual parameter names and values
@@ -211,10 +226,26 @@ calcHarvestDateVector <- function(croppar,
   # flip hd_last<->hd_first.
   w_lo <- as.integer(getOption("cc_wet_window_lo", 10L))
   w_hi <- as.integer(getOption("cc_wet_window_hi", 20L))
+  # The wet-near gate's window WIDTH (w_lo/w_hi) deadbands the onset TIMING -- a wet day grazing the edge
+  # of the window. But the gate's verdict, `any(daily_ppet[window] >= threshold)`, is a single-day MAX:
+  # it flips on the post-sowing P/PET PEAK grazing the threshold (chiefly Rice, ppet_ratio = 1.0, sown on
+  # the descending limb of a winter-wet climate so the window straddles the 1.0 crossing). wet_near_min_area
+  # replaces that brittle peak with an INTEGRATED test: the window's excursion above the threshold must
+  # accumulate sum(ppet - threshold) >= a budget, so a thin touch (peak just clears the line for a day or
+  # two -> area ~0) reads as NOT wet, while a real wet season qualifies. HYSTERETIC (Schmitt) like
+  # cross_min_area: a previously-wet cell stays wet at the lenient lo budget, a previously-dry one needs
+  # the strict hi to become wet. wet_near_min_area = 0 (default) -> the original single-day max test.
+  wn_area_eff <- if (isTRUE(prev_wet_near)) wet_near_min_area[1L]
+                 else                       wet_near_min_area[length(wet_near_min_area)]   # NA/FALSE -> strict hi
+  # The window WIDTH (20/40) and the area budget are COMPLEMENTARY, not redundant: tested replacing the
+  # width hysteresis with a fixed wide window + area-only Schmitt -- it REGRESSED the monsoon onset-timing
+  # case (NE-China Maize 32 -> 60..121) the width hysteresis exists for, while being neutral on Rice. So
+  # both axes are kept: width deadbands the onset TIMING, the area budget the wet-season MAGNITUDE.
   wetnear_test <- function(threshold) {
-    w_eff <- if (isTRUE(prev_wet_near)) w_hi else w_lo   # NA / FALSE -> strict
+    w_eff <- if (isTRUE(prev_wet_near)) w_hi else w_lo                         # NA / FALSE -> strict
     widx  <- ((as.integer(sowing_date) - 1L + 0:w_eff) %% ndays_year) + 1L
-    any(daily_ppet[widx] >= threshold)
+    if (wn_area_eff <= 0) any(daily_ppet[widx] >= threshold)                   # off: original peak test
+    else sum(pmax(daily_ppet[widx] - threshold, 0)) >= wn_area_eff             # integrated-area gate
   }
   wet_near <- wetnear_test(ppet_ratio)
 
@@ -228,13 +259,23 @@ calcHarvestDateVector <- function(croppar,
   #     ppet_min == ppet_ratio this is a no-op (the floor test is the failed gate again -> hd_first);
   #     only Rice (ppet_ratio = 1.0, ppet_min = 0.5) exercises it, reproducing the old always-wet
   #     outcome (above floor, no floor dry-down -> hd_last), now persistence-guarded (cross_min_area).
+  # floor_found: did the TIER-2 ppet_min dry-down (floor_end) exist? Captured for next year's Schmitt
+  # (prev_floor_found). NA when the floor branch is not exercised (TIER 1, or ppet_min == ppet_ratio).
+  floor_found <- NA
+  floor_area_eff <- if (isTRUE(prev_floor_found)) area_lo else area_hi   # NA/FALSE -> strict hi
   decide_wetseas <- function(doy_wet1) {
     if (wet_near) {
       if (doy_wet1 == -9999) hd_last else wetseas_escape(doy_wet1)
     } else if (ppet_min < ppet_ratio) {
+      # FULL PARALLEL with the ppet_ratio doy_wet1 crossing: the floor dry-down gets the SAME hysteretic
+      # cross_min_area Schmitt (prev_floor_found -> lenient lo, else strict hi), not the old scalar
+      # area_lo. A grazing floor dry-down (area near the budget) then cannot flip found<->absent year to
+      # year -- which was toggling hd_last<->hd_first (-> first<->topt selection) in TIER-2 Rice cells
+      # (Pampas/US plains the area gate demotes into this branch).
       floor_end <- calcDoyCrossThreshold(daily_ppet, ppet_min,
                      min_duration = 1L, from = sow_anchor,
-                     min_area = area_lo)[["doy_cross_down"]]   # scalar bound (no floor hysteresis)
+                     min_area = floor_area_eff)[["doy_cross_down"]]
+      floor_found <<- (floor_end != -9999)
       if (wetnear_test(ppet_min) && floor_end == -9999) hd_last else hd_first
     } else {
       hd_first
@@ -257,11 +298,13 @@ calcHarvestDateVector <- function(croppar,
                                       from = sow_anchor,
                                       min_area = min_area_eff)[["doy_cross_down"]]
     rw1 <- if (max(daily_ppet) < thr1) 0L else if (min(daily_ppet) >= thr1) 2L else 1L
-    hd_wetseas <- decide_wetseas(doy_wet1)
-    harv_hi <- rw1 + 6L * as.integer(doy_wet1 != -9999) + 12L * as.integer(wet_near)
+    hd_wetseas <- decide_wetseas(doy_wet1)   # sets floor_found via <<-
+    harv_hi <- rw1 + 6L * as.integer(doy_wet1 != -9999) + 12L * as.integer(wet_near) +
+               48L * as.integer(isTRUE(floor_found))
   } else {
-    hd_wetseas <- decide_wetseas(doy_wet1)
-    harv_hi <- 6L * as.integer(doy_wet1 != -9999) + 12L * as.integer(wet_near)
+    hd_wetseas <- decide_wetseas(doy_wet1)   # sets floor_found via <<-
+    harv_hi <- 6L * as.integer(doy_wet1 != -9999) + 12L * as.integer(wet_near) +
+               48L * as.integer(isTRUE(floor_found))
   }
 
   # Warmest period of the year ----
@@ -344,10 +387,11 @@ calcHarvestDateVector <- function(croppar,
                         "hd_wetseas", "hd_temp_base", "hd_temp_opt")
 
   # Hysteresis state carried forward by calcCropCalendars: the high part of the packed harvest state.
-  # 24*topt_found (did the reproductive hot-day crossing exist, carried as prev_topt_found for the
-  # temp_cross_min_area Schmitt) + 12*wet_near (the always-on wet-near gate, carried as prev_wet_near for
-  # the Schmitt window) + 6*wetend_found (did doy_wet1 exist, carried as prev_wetend_found for the
-  # cross_min_area Schmitt) + rw1 (0/1/2 DRY/NORMAL/WET regime, cc_regime path only; 0 otherwise).
+  # 48*floor_found (did the TIER-2 ppet_min floor dry-down exist, carried as prev_floor_found for the
+  # floor cross_min_area Schmitt) + 24*topt_found (did the reproductive hot-day crossing exist, carried
+  # as prev_topt_found for the temp_cross_min_area Schmitt) + 12*wet_near (the always-on wet-near gate,
+  # carried as prev_wet_near for the Schmitt window) + 6*wetend_found (did doy_wet1 exist, carried as
+  # prev_wetend_found for the cross_min_area Schmitt) + rw1 (0/1/2 DRY/NORMAL/WET, cc_regime path only).
   attr(hd_vector, "harv_hi") <- harv_hi
   return(hd_vector)
 }
