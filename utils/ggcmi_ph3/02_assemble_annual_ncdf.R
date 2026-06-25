@@ -139,6 +139,11 @@ g16 <- (2011L - 1851L) %/% 10L
 if (any(decade == g16) && !is.na(rb)) {
   grab <- function(scenario, yr_lo, yr_hi) {
     e2 <- load_annual(rb, scenario, must = FALSE); if (is.null(e2)) return(NULL)
+    # Cells are matched POSITIONALLY across scenarios here, so the grabbed scenario must share THIS
+    # scenario's grid (same GCM => same land mask/order). If it does not, skip rather than silently
+    # splice dates onto mismatched cells -- the caller then falls back to the in-scenario median (the
+    # same path as a missing file). nrow alone (checked below) cannot catch a reordered/shifted grid.
+    if (!isTRUE(all.equal(e2$grid_clm, grid_clm, check.attributes = FALSE))) return(NULL)
     yy <- as.integer(e2$emit_years); k <- which(yy >= yr_lo & yy <= yr_hi); if (!length(k)) return(NULL)
     list(gp  = e2$cal[[paste0("gp_", irri)]][, k, drop = FALSE], sow = e2$cal$sow[, k, drop = FALSE],
          mat = e2$cal[[paste0("maty_", irri)]][, k, drop = FALSE])

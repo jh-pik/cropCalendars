@@ -218,10 +218,11 @@ calcSowingDate <- function(croppar,
   # to year and propagates into the sowing-anchored hd_first harvest date. sowing_month stays
   # DEFAULT_MONTH (set just above), so the cell is still flagged "no real season" (dflag) and the harvest
   # too-cold guard still fires -- only the placeholder DOY moves.
-  mean_tx <- mean(daily_temp_x)     # annual mean of the same smoothed series the crossing scan reads
-  firstspringdoy <- ifelse(firstspringdoy != -9999, firstspringdoy,
-                    ifelse(mean_tx > temp_spring, coldest_doy,     # warm cell -> coldest day (winter trough ~Jan)
-                           warmest_doy))                           # cold cell -> warmest day (summer peak)
+  # Scalar if/else (not ifelse): the mean is the same smoothed series the crossing scan reads, and is
+  # only needed on the no-crossing fallback -- ifelse would evaluate it every cell (both arms eager).
+  firstspringdoy <- if (firstspringdoy != -9999) firstspringdoy            # genuine up-crossing
+                    else if (mean(daily_temp_x) > temp_spring) coldest_doy # warm cell -> winter trough (~Jan)
+                    else warmest_doy                                       # cold cell -> summer peak
 
   # Wettest-window sowing DOY (crop-independent: calcCropCalendars computes it once and passes it in;
   # recompute only for direct callers). Hoisted out of the STYP branch because the winter-type PREC
@@ -229,7 +230,14 @@ calcSowingDate <- function(croppar,
   # the daily series, fall back to the monthly 4-month ratio-of-sums (.wetDoyMonthly) -- bug-free (it
   # sums P and PET separately, never the monthly P/PET ratios a near-zero-PET month makes explode), just
   # coarser (~1-month resolution).
-  if (is.null(wet_doy) && seasonality %in% c("PREC", "PRECTEMP")) {
+  #
+  # Only compute it where a downstream branch actually CONSUMES it: STYP uses it for PREC and PRECTEMP,
+  # but WTYP uses it for PREC only (WTYP PRECTEMP/TEMP/TEMPPREC take the thermal autumn rule and never
+  # read wet_doy). Scoping the guard this way avoids both a wasted computation AND a spurious stop() for
+  # a winter-type PRECTEMP cell supplied with temperature but no P/PET.
+  wet_doy_needed <- if (calcmethod_sdate == "WTYP_CALC_SDATE") seasonality == "PREC"
+                    else                                       seasonality %in% c("PREC", "PRECTEMP")
+  if (is.null(wet_doy) && wet_doy_needed) {
     if (!is.null(daily_prec) && !is.null(daily_pet)) {
       wet_doy <- calcDoyWetMonth(daily_prec, daily_pet,
                                  prev_doy = prev_wet_doy, eps = wet_window_eps,

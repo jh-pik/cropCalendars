@@ -48,7 +48,18 @@ if (!exists("cross_min_duration"))    cross_min_duration    <- 1L
 if (!exists("seas_eps"))              seas_eps              <- 0
 if (!exists("seas_mtemp_margin"))     seas_mtemp_margin     <- 1
 if (!exists("harv_ppet_eps"))         harv_ppet_eps         <- 0
+if (!exists("harv_exist_eps"))        harv_exist_eps        <- 0
 if (!exists("harv_tmax_margin"))      harv_tmax_margin      <- 0
+if (!exists("cross_min_area"))        cross_min_area        <- 0
+if (!exists("temp_cross_min_area"))   temp_cross_min_area   <- 0
+if (!exists("wet_near_min_area"))     wet_near_min_area     <- 0
+if (!exists("winter_margin"))         winter_margin         <- 0
+if (!exists("winter_cold_margin"))    winter_cold_margin    <- 0
+
+# Wet-near gate Schmitt window: adopt the locked config 20/40 (the package default is 10/20) by
+# setting the options the rule reads, so this streaming driver matches the cached 01b driver.
+options(cc_wet_window_lo = if (exists("wet_window_lo")) as.integer(wet_window_lo) else 10L,
+        cc_wet_window_hi = if (exists("wet_window_hi")) as.integer(wet_window_hi) else 20L)
 
 out_dir <- paste0(output_dir, "/crop_calendars/annual/", scen, "/", gcm, "/")
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
@@ -135,27 +146,35 @@ FLDS     <- c("sow", "ss", "seas", "dflag", "maty_rf", "maty_ir",
 # so the state is per-cell, not per-crop). Returns a list:
 #   arr = field array [ncrops x nflds x ncells]
 #   wet = per-cell resolved wettest-window DOY to feed in as next year's prev_wet.
-computeYear <- function(clim, prev_wet, prev_seas, prev_harv) {
+computeYear <- function(clim, prev_wet, prev_seas, prev_harv, prev_winter) {
   # NB: do NOT call gc() here. A full collection right before the mclapply fork,
   # with the large parent heap live (ring buffer + preallocated OUT), doubled the
   # per-worker copy-on-write footprint (168 GB -> 340 GB at 64 cores) and OOM'd.
   res <- mclapply(seq_len(NCELLS), function(j) {
     mcl <- list(dtemp = clim$dtemp[j, ], dprec = clim$dprec[j, ], dpet = clim$dpet[j, ])
     M <- matrix(NA_real_, length(crops), length(FLDS), dimnames = list(NULL, FLDS))
-    wd <- NA_integer_; st <- NA_character_; hv <- rep(NA_integer_, length(crops))
+    wd <- NA_integer_; st <- NA_character_; hv <- rep(NA_integer_, length(crops)); wc <- rep(NA_integer_, length(crops))
     for (ci in seq_along(crops)) {
       r <- calcCropCalendars(lon = land_lon[j], lat = land_lat[j], mclimate = mcl,
                              crop_parameters = cparams[[ci]],
                              prev_wet_doy = prev_wet[j], wet_window_eps = wet_window_eps,
                              wet_window_decay = wet_window_decay,
                              cross_min_duration = cross_min_duration,
+                             cross_min_area = cross_min_area,
+                             temp_cross_min_area = temp_cross_min_area,
+                             wet_near_min_area = wet_near_min_area,
                              smooth_window = smooth_window,
                              prev_seas = prev_seas[j], seas_eps = seas_eps,
                              seas_mtemp_margin = seas_mtemp_margin,
                              prev_harv = prev_harv[j, ci], harv_ppet_eps = harv_ppet_eps,
-                             harv_tmax_margin = harv_tmax_margin)
+                             harv_exist_eps = harv_exist_eps,
+                             harv_tmax_margin = harv_tmax_margin,
+                             prev_winter = prev_winter[j, ci],
+                             winter_margin = winter_margin,
+                             winter_cold_margin = winter_cold_margin)
       if (ci == 1L) { wd <- attr(r, "wet_doy"); st <- attr(r, "seas_type") }   # crop-independent
-      hv[ci] <- attr(r, "harv_state")   # crop-DEPENDENT harvest hysteresis state
+      hv[ci] <- attr(r, "harv_state")     # crop-DEPENDENT harvest hysteresis state
+      wc[ci] <- attr(r, "winter_regime")  # crop-DEPENDENT winter-regime hysteresis state
       M[ci, ] <- c(r$sowing_doy[1],
                    ifelse(r$sowing_season[1] == "winter", 1, 2),
                    match(r$seasonality_type[1], SEAS_LEV),
@@ -165,14 +184,15 @@ computeYear <- function(clim, prev_wet, prev_seas, prev_harv) {
                    match(r$harvest_reason[1], HARV_LEV),
                    match(r$harvest_reason[2], HARV_LEV))
     }
-    list(M = M, wd = wd, st = st, hv = hv)
+    list(M = M, wd = wd, st = st, hv = hv, wc = wc)
   }, mc.cores = ncores)
   if (any(vapply(res, function(x) !is.list(x) || !is.matrix(x$M), logical(1))))
     stop("computeYear: a worker failed (retry with ncores = 1 to see the error).")
   list(arr = simplify2array(lapply(res, `[[`, "M")),               # [ncrops x nflds x ncells]
        wet = vapply(res, function(x) x$wd, integer(1)),
        seas = vapply(res, function(x) x$st, character(1)),
-       harv = t(vapply(res, `[[`, integer(length(crops)), "hv")))   # [cells x crops]
+       harv = t(vapply(res, `[[`, integer(length(crops)), "hv")),    # [cells x crops]
+       winter = t(vapply(res, `[[`, integer(length(crops)), "wc")))  # [cells x crops]
 }
 
 # ------------------------------------ #
@@ -232,13 +252,14 @@ if (Y0 - W >= data_start && file.exists(sf)) {
 prev_wet  <- rep(NA_integer_, NCELLS)
 prev_seas <- rep(NA_character_, NCELLS)   # per-cell seasonality-class hysteresis state
 prev_harv <- matrix(NA_integer_, NCELLS, length(crops))   # crop-dependent harvest state
+prev_winter <- matrix(NA_integer_, NCELLS, length(crops)) # crop-dependent winter-regime state
 
 # Product years served by the initial ring (the anchored block at the record start,
 # or just Y0 otherwise) share one climatology — compute once and replicate.
 blk <- which(emit_years >= Y0 & emit_years <= serve_hi)
 if (length(blk) > 0) { t0 <- Sys.time()
-  cy <- computeYear(ringClimatology(ring), prev_wet, prev_seas, prev_harv)
-  arr0 <- cy$arr; prev_wet <- cy$wet; prev_seas <- cy$seas; prev_harv <- cy$harv
+  cy <- computeYear(ringClimatology(ring), prev_wet, prev_seas, prev_harv, prev_winter)
+  arr0 <- cy$arr; prev_wet <- cy$wet; prev_seas <- cy$seas; prev_harv <- cy$harv; prev_winter <- cy$winter
   for (e in blk) store(e, arr0)
   cat(sprintf("  block %d-%d (1 climatology): %.1fs\n", min(emit_years[blk]), max(emit_years[blk]),
               as.numeric(Sys.time() - t0, units = "secs"))) }
@@ -249,8 +270,8 @@ if (last_emit - 1L >= serve_hi) for (P in serve_hi:(last_emit - 1L)) {
   ring <- read_push(ring, P)
   Tn <- P + 1L; e <- match(Tn, emit_years)
   if (!is.na(e)) { t0 <- Sys.time()
-    cy <- computeYear(ringClimatology(ring), prev_wet, prev_seas, prev_harv)
-    prev_wet <- cy$wet; prev_seas <- cy$seas; prev_harv <- cy$harv
+    cy <- computeYear(ringClimatology(ring), prev_wet, prev_seas, prev_harv, prev_winter)
+    prev_wet <- cy$wet; prev_seas <- cy$seas; prev_harv <- cy$harv; prev_winter <- cy$winter
     store(e, cy$arr)
     cat(sprintf("  year %d: %.1fs  (rss %.1f GB)\n", Tn, as.numeric(Sys.time() - t0, units = "secs"),
                 as.numeric(gc()[2, 2]) / 1024)) }

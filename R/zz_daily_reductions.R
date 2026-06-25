@@ -83,32 +83,47 @@
   min(.circRoll(daily_temp, width, mean = TRUE))
 }
 
-# Phase (centre DOY) of the cold season, as a coldness-weighted CIRCULAR CENTROID of
-# the smoothed annual temperature cycle -- NOT the argmin. The argmin (which.max of the
-# negated window, the obvious "coldest-month mid-day") is hypersensitive in cells with a
-# broad, flat winter trough (maritime NW Europe: only ~2 deg C separates the coldest day
-# from a typical winter day), so the single lowest day jumps +-30 d between adjacent
-# climatology years even though the trough's CENTRE barely moves. That jitter fed the
-# winter-wheat warm-regime sowing (coldest_doy - 75) and the spring up-crossing scan
-# (from = coldest_doy) and was the dominant maritime sowing-flicker source. The centroid
-# averages over the whole cold plateau, so it is ~10x more stable (validated: spread
-# ~55 d -> ~5 d on UK/France cells) while remaining a pure PHASE estimator -- weights
-# depend on the SHAPE of the cycle, not its level, so it does not drift with warming the
-# way a fixed-threshold crossing date would. For a sharp continental winter it ~= argmin.
-# Weight each DOY by how far it sits below the annual peak (0 at the warmest day, max at
-# the coldest); take the circular mean angle via atan2 of the weighted sin/cos sums. A
-# degenerate constant series (all weights 0) yields atan2(0,0)=0 -> DOY 1, harmless (such
-# cells are NO_SEASONALITY and never read coldest_doy). The monthly-fallback path in
-# calcSowingDate (which.min(monthly_temp)) is unchanged: it is the coarse no-daily-data
-# branch, unused in the GGCMI runs where the daily climatology is always present.
-.doyColdestWindow <- function(daily_temp, width = 30L) {
-  tx  <- .circRoll(daily_temp, width, "center", mean = TRUE)
+# Phase (centre DOY) of the warm (cold = FALSE) or cold (cold = TRUE) season, as a magnitude-
+# weighted CIRCULAR CENTROID of the smoothed annual temperature cycle -- NOT the argmax/argmin.
+# The plain extremum is hypersensitive in cells with a broad, flat trough or plateau (maritime
+# NW Europe: only ~2 deg C separates the coldest day from a typical winter day), so the single
+# lowest/highest day jumps +-30 d between adjacent climatology years even though the centre
+# barely moves. That jitter fed the winter-wheat warm-regime sowing (coldest_doy - 75), the
+# spring up-crossing scan (from = coldest_doy), hd_temp_base (= warmest_day [+ rphase]) and the
+# cold-cell spring fallback (warmest_doy), and was the dominant maritime sowing-flicker source.
+# The centroid averages over the whole plateau, ~10x more stable (validated: spread ~55 d ->
+# ~5 d on UK/France cells), while remaining a pure PHASE estimator -- weights depend on the
+# SHAPE of the cycle, not its level, so it does not drift with warming. Weight each DOY by how
+# far it sits from the OPPOSITE extreme (cold: max(tx) - tx, 0 at the warmest day; warm:
+# tx - min(tx), 0 at the coldest); the circular-mean angle is atan2 of the weighted sin/cos
+# sums, mapped back to a DOY. For a sharp unimodal cycle it ~= argmax/argmin.
+#
+# DEGENERATE / MULTI-MODAL GUARD: the centroid is only meaningful for an essentially UNIMODAL
+# cycle. For a (near-)constant series the weights vanish, and for a (near-)SEMIANNUAL cycle (two
+# comparable extrema ~half a year apart, e.g. some tropical-highland cells) the first-harmonic
+# resultant CANCELS to ~0, so atan2 returns a phase unrelated to either extreme (a symmetric
+# double-peak at DOY 100/282 returned DOY 80 -- a cold trough -- before this guard). When the
+# resultant's concentration |R| / sum(w) falls below conc_min we therefore fall back to the
+# plain argmax/argmin of the smoothed series: a REAL extremum (which for a true double-peak cell
+# may wobble between the two peaks year to year -- an honest ambiguity, not the centroid's
+# stable-but-WRONG midpoint). A clean unimodal sinusoid has concentration 0.5 and a semiannual
+# ~0, so conc_min = 0.05 separates them with wide margin; the constant series (sum(w) = 0) also
+# routes here (-> which.max/min = DOY 1, as before). The monthly-fallback callers
+# (which.min/which.max(monthly_temp)) never reach this -- coarse no-daily-data branch.
+.doyCircularCentroid <- function(daily_value, width = 30L, cold = FALSE, conc_min = 0.05) {
+  tx  <- .circRoll(daily_value, width, "center", mean = TRUE)
   n   <- length(tx)
-  w   <- max(tx) - tx
+  w   <- if (cold) max(tx) - tx else tx - min(tx)
   ang <- 2 * pi * (seq_len(n) - 1L) / n
-  m   <- atan2(sum(w * sin(ang)), sum(w * cos(ang)))
+  C   <- sum(w * cos(ang)); S <- sum(w * sin(ang)); sw <- sum(w)
+  if (is.na(sw) || sw <= 0 || sqrt(C * C + S * S) < conc_min * sw)   # degenerate / multi-modal
+    return(as.integer(if (cold) which.min(tx) else which.max(tx)))   # -> real extremum (argmin/argmax)
+  m <- atan2(S, C)
   as.integer((round((m %% (2 * pi)) / (2 * pi) * n)) %% n + 1L)
 }
+
+# Centre DOY of the cold season (coldness-weighted circular centroid). See .doyCircularCentroid.
+.doyColdestWindow <- function(daily_temp, width = 30L) .doyCircularCentroid(daily_temp, width, cold = TRUE)
 
 # Daily analogue of min(monthly_ppet) -- the always-wet aridity floor -- is just
 # min(daily_ppet) at the call site (calcHarvestDateVector): under the unified

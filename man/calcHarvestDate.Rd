@@ -6,23 +6,16 @@
 \usage{
 calcHarvestDate(
   croppar,
-  monthly_temp,
   sowing_date,
   sowing_month,
   sowing_season,
   seasonality,
   harvest_rule,
-  hd_vector,
-  daily_temp = NULL,
-  smooth_window = 31L
+  hd_vector
 )
 }
 \arguments{
 \item{croppar}{data.frame with crop parematers as returned by getCropParam}
-
-\item{monthly_temp}{DEPRECATED and ignored. Formerly the monthly-maximum fallback for the
-"too cold to grow" guards' warmest-window temperature; those guards now key on
-\code{sowing_month == 0} alone (the consistency fix). Kept in the signature for call compatibility.}
 
 \item{sowing_date}{numeric value as day of the year (DOY). This can be either
 caculated with calcSowingDate or prescribed.}
@@ -40,15 +33,6 @@ calcSowingDate.}
 
 \item{hd_vector}{vector of possible harvest dates as calculated by
 calcHarvestDateVector}
-
-\item{daily_temp}{DEPRECATED and ignored. Formerly drove the "too cold to grow" guards'
-warmest 30-day window mean; those guards now key on \code{sowing_month == 0} alone (the
-consistency fix -- the warmest-window test duplicated the sowing decision's own
-\code{temp_spring}/\code{temp_fall} crossing, less robustly, and flickered). Kept for call
-compatibility.}
-
-\item{smooth_window}{DEPRECATED and ignored here (was the window for the now-removed
-warmest-window guard temperature). Kept for call compatibility.}
 }
 \description{
 Rule-based estimation of the end of the crop growing period

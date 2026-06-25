@@ -246,15 +246,12 @@ calcCropCalendars <- function(lon                   = NULL,
 
   harvest <- calcHarvestDate(
     croppar       = crop_parameters,
-    monthly_temp  = mtemp,
     sowing_date   = sowing_day,
     sowing_month  = sowing_month,
     sowing_season = sowing_season,
     seasonality   = seasonality,
     harvest_rule  = harvest_rule,
-    hd_vector     = harvest_vector,
-    daily_temp    = dtemp,
-    smooth_window = smooth_window
+    hd_vector     = harvest_vector
   )
 
   harvest_day_rf  <- harvest[["hd_rf"]]

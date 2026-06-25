@@ -9,9 +9,6 @@
 #' the respective crop species.
 #'
 #' @param croppar data.frame with crop parematers as returned by getCropParam
-#' @param monthly_temp DEPRECATED and ignored. Formerly the monthly-maximum fallback for the
-#' "too cold to grow" guards' warmest-window temperature; those guards now key on
-#' \code{sowing_month == 0} alone (the consistency fix). Kept in the signature for call compatibility.
 #' @param sowing_date numeric value as day of the year (DOY). This can be either
 #' caculated with calcSowingDate or prescribed.
 #' @param sowing_month numeric value between 0 and 12. 0 represents the "default
@@ -23,25 +20,15 @@
 #' @param harvest_rule harvest rule as calculated by calcHarvestRule
 #' @param hd_vector vector of possible harvest dates as calculated by
 #' calcHarvestDateVector
-#' @param daily_temp DEPRECATED and ignored. Formerly drove the "too cold to grow" guards'
-#' warmest 30-day window mean; those guards now key on \code{sowing_month == 0} alone (the
-#' consistency fix -- the warmest-window test duplicated the sowing decision's own
-#' \code{temp_spring}/\code{temp_fall} crossing, less robustly, and flickered). Kept for call
-#' compatibility.
-#' @param smooth_window DEPRECATED and ignored here (was the window for the now-removed
-#' warmest-window guard temperature). Kept for call compatibility.
 #' @export
 
 calcHarvestDate <- function(croppar,
-                            monthly_temp,
                             sowing_date,
                             sowing_month,
                             sowing_season,
                             seasonality,
                             harvest_rule,
-                            hd_vector,
-                            daily_temp = NULL,
-                            smooth_window = 31L
+                            hd_vector
                             ) {
 
   # Extract individual parameter names and values
@@ -49,10 +36,10 @@ calcHarvestDate <- function(croppar,
 
   ndays_year <- 365
 
-  # NB: the "too cold to grow" guards below now key on sowing_month==0 alone (the consistency fix),
-  # so the warmest-window temperature (formerly warmest_t = .warmestWindowMean(daily_temp) vs
-  # temp_spring/temp_fall) is no longer needed here. monthly_temp / daily_temp / smooth_window are
-  # retained in the signature only so existing calcCropCalendars calls do not break.
+  # NB: the "too cold to grow" guards below key on sowing_month==0 alone (the consistency fix), so the
+  # warmest-window temperature (formerly warmest_t = .warmestWindowMean(daily_temp) vs temp_spring/
+  # temp_fall) is no longer computed here; the monthly_temp / daily_temp / smooth_window arguments that
+  # fed it have been dropped from the signature.
 
   # Extract individual individual values from hd_vector
   for (i in names(hd_vector)) {
