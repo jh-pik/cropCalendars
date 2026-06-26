@@ -175,13 +175,17 @@ gcms <- c(
 # Scenarios available per forcing -- the (GCM x scenario) processing matrix.
 # ssp534-over (SSP5-3.4 overshoot, 2040-2100) is available for IPSL/MRI/UKESM only; its
 # pre-2040 sliding window is gap-filled from ssp585 (see 01a_climatology_annual.R).
+# NB: UKESM1-0-LL ssp119 lacks bias-adjusted huss + ps, so the launcher SC matrices run
+# ssp119 for IPSL/MRI only. It is kept here because it WOULD run under Priestley-Taylor PET
+# (pet_method = "pt", which needs only temperature + radiation); the default FAO-56
+# Penman-Monteith needs huss/ps/wind, so UKESM ssp119 is excluded under the default.
 scenarios <- list(
   "GSWP3-W5E5"    = c("spinclim", "obsclim"),
   "GFDL-ESM4"     = c("historical", "ssp126", "ssp245", "ssp370", "ssp585"),
   "IPSL-CM6A-LR"  = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", "ssp585", "ssp534-over"),
   "MPI-ESM1-2-HR" = c("historical", "ssp126", "ssp245", "ssp370", "ssp585"),
   "MRI-ESM2-0"    = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", "ssp585", "ssp534-over"),
-  "UKESM1-0-LL"   = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp585", "ssp534-over")
+  "UKESM1-0-LL"   = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp585", "ssp534-over")  # ssp119: PT-PET only
 )
 # Union of all scenarios, used to build the file-window lists below.
 scens <- sort(unique(unlist(scenarios, use.names = FALSE)))
