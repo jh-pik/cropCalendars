@@ -24,7 +24,8 @@ generatePHUTserie_isimip3 <- function(
     grid_df       = NULL,
     cal_dir       = NULL,    # stage-02 product directory (gcm x scenario)
     soc_file      = NULL,    # soc token in the stage-02 filename (histsoc / <ssp> / countersoc)
-    crop_par_file = NULL
+    crop_par_file = NULL,
+    ncores        = 1L       # parallelise the per-crop PHU over this many cores (fork; needs R_GC_MEM_GROW=0)
 ) {
   if (is.null(grid_df)) stop("generatePHUTserie_isimip3: grid_df (LPJmL grid) is required.")
   years      <- FYnc:LYnc
@@ -57,8 +58,8 @@ generatePHUTserie_isimip3 <- function(
       ncfile = ncpath(cro, ir))
   }
   njob <- length(jobs)
-  cat(sprintf("\nPHU (decadal): %s %s | %d crop x irrigation | years %d-%d\n",
-              gcm, scen, njob, FYnc, LYnc))
+  cat(sprintf("\nPHU (decadal): %s %s | %d crop x irrigation | years %d-%d | %d core(s)\n",
+              gcm, scen, njob, FYnc, LYnc, ncores))
 
   # ------------------------------------------------------#
   # 720x360 <-> NCELLS index mapping (once; all crops share the product grid) ----
@@ -167,8 +168,17 @@ generatePHUTserie_isimip3 <- function(
     for (k in seq_len(nrow(tsrc))) {
       tas_day   <- get.isimip.tas(gcm, tsrc$sc[k], tsrc$yr[k], tsrc$yr[k], ncells = NCELLS)[, , 1L]
       mtemp_mat <- .monthlyFromDaily(tas_day, "mean")
-      for (jj in seq_len(njob)) pacc[[jj]][, k] <- phu_one(jobs[[jj]], sda_l[[jj]], hda_l[[jj]], tas_day, mtemp_mat)
-      rm(tas_day, mtemp_mat)
+      # Crops are independent; spread them over cores (the few vernal crops are the long poles,
+      # so dynamic scheduling -- mc.preschedule=FALSE -- balances them across workers). tas_day /
+      # mtemp_mat are read ONCE and shared with the forked workers (copy-on-write).
+      one <- function(jj) phu_one(jobs[[jj]], sda_l[[jj]], hda_l[[jj]], tas_day, mtemp_mat)
+      res <- if (ncores > 1L)
+        parallel::mclapply(seq_len(njob), one, mc.cores = ncores, mc.preschedule = FALSE)
+      else lapply(seq_len(njob), one)
+      if (any(vapply(res, function(x) !is.numeric(x) || length(x) != NCELLS, logical(1))))
+        stop("a PHU worker failed (re-run with ncores=1 to see the error)")
+      for (jj in seq_len(njob)) pacc[[jj]][, k] <- res[[jj]]
+      rm(tas_day, mtemp_mat, res)
     }
     for (jj in seq_len(njob)) phu_dec[[jj]][, di] <- apply(pacc[[jj]], 1L, median, na.rm = TRUE)
     rm(pacc, sda_l, hda_l)

@@ -16,6 +16,7 @@ source "$(dirname "$(readlink -f "$0")")/settings.sh"
 
 PARTITION=${PARTITION:-standard}
 QOS=${QOS:-short}
+CORES=${CORES:-4}      # parallelise the per-crop PHU (the few vernal crops are the long poles)
 GCMS=${GCMS:-"GSWP3-W5E5 GFDL-ESM4 IPSL-CM6A-LR MPI-ESM1-2-HR MRI-ESM2-0 UKESM1-0-LL"}
 SCENS=${SCENS:-"historical obsclim ssp126 ssp245 ssp370 ssp585 ssp119 ssp460 ssp534-over"}
 CROPS=${CROPS:-}
@@ -43,11 +44,11 @@ for g in $GCMS; do
     if [ ! -d "$CALDIR" ] || [ -z "$(ls -A "$CALDIR"/ggcmi-crop-calendar_${g_lc}_*.nc 2>/dev/null)" ]; then
       skip=$((skip+1)); continue
     fi
-    CMD=(sbatch --ntasks=1 --cpus-per-task=1 --mem=16G -t 08:00:00 -J phu_${g}_${s} \
+    CMD=(sbatch --ntasks=1 --cpus-per-task=${CORES} --mem=20G -t 08:00:00 -J phu_${g}_${s} \
       -A "${ACCOUNT}" --chdir="${WD}" -p "${PARTITION}" --qos=${QOS} \
       -o logs/phu_${g}_${s}-%j.out \
       --export=ALL,CROPS="${CROPS}" \
-      --wrap="source ${WD}/env.sh; load_r_env; Rscript 03_calc_phu_for_lpjml.R ${g} ${s}")
+      --wrap="source ${WD}/env.sh; load_r_env; export R_GC_MEM_GROW=0; Rscript 03_calc_phu_for_lpjml.R ${g} ${s} ${CORES}")
     if [ "${DRYRUN:-0}" = "1" ]; then printf '%q ' "${CMD[@]}"; echo; else "${CMD[@]}"; fi
     echo "queued ${g} ${s} (all crops x rf/ir, one job)"
     n=$((n+1))

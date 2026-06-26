@@ -45,6 +45,7 @@ print(args)
 # call so each year's daily temperature is read once and reused across crops.
 gcm    <- args[1]
 scen   <- args[2]
+ncores <- if (length(args) >= 3) as.integer(args[3]) else as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", "1"))
 # CROPS env (ggcmi tokens, comma- or space-separated) restricts the crop set; default all.
 crops_env <- trimws(unlist(strsplit(Sys.getenv("CROPS", ""), "[, ]+")))
 crops_env <- crops_env[nzchar(crops_env)]
@@ -91,7 +92,8 @@ generatePHUTserie_isimip3(
     LYnc     = LYnc,
     grid_df  = grid_df,
     cal_dir  = cal_dir,
-    soc_file = soc_file
+    soc_file = soc_file,
+    ncores   = ncores
 )
 
 # ------------------------------------------------------#
