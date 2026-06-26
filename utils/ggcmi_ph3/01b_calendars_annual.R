@@ -192,6 +192,7 @@ prev_wet    <- rep(NA_integer_, NCELLS)
 prev_seas   <- rep(NA_character_, NCELLS)
 prev_harv   <- matrix(NA_integer_, NCELLS, length(crops))   # crop-dependent harvest state
 prev_winter <- matrix(NA_integer_, NCELLS, length(crops))   # crop-dependent winter-regime state
+t_all <- Sys.time()
 for (e in seq_len(nE)) {
   t0 <- Sys.time()
   ce <- new.env(); load(cfiles[e], envir = ce); clim <- ce$clim; rm(ce)
@@ -199,8 +200,11 @@ for (e in seq_len(nE)) {
   prev_wet <- cy$wet; prev_seas <- cy$seas; prev_harv <- cy$harv; prev_winter <- cy$winter
   store(e, cy$arr)
   rm(clim)
-  cat(sprintf("  year %d: %.1fs  (rss %.1f GB)\n", emit_years[e],
-              as.numeric(Sys.time() - t0, units = "secs"), as.numeric(gc()[2, 2]) / 1024))
+  tot <- as.numeric(Sys.time() - t_all, units = "mins")
+  cat(sprintf("[%s]  year %d/%d (%d): %.1fs  (rss %.1f GB, elapsed %.1f min, eta %.1f min)\n",
+              format(Sys.time(), "%H:%M:%S"), e, nE, emit_years[e],
+              as.numeric(Sys.time() - t0, units = "secs"), as.numeric(gc()[2, 2]) / 1024,
+              tot, tot / e * (nE - e)))
 }
 
 # ------------------------------------ #

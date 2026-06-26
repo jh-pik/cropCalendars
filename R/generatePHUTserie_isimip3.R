@@ -133,10 +133,13 @@ generatePHUTserie_isimip3 <- function(
   # ------------------------------------------------------#
   # Loop decades; within each, read each year's temperature ONCE and compute every crop ----
   phu_dec <- lapply(seq_len(njob), function(.) matrix(NA_real_, NCELLS, ndec))   # decadal PHU per cell
+  t_all <- Sys.time()
 
   for (di in seq_along(dec_list)) {
+    t_dec <- Sys.time()
     d <- dec_list[di]; in_dec <- dec_cols[[di]]; yrs_d <- years[in_dec]
-    cat(sprintf("--- decade %d (%d-%d, %d yr)", d, min(yrs_d), max(yrs_d), length(yrs_d)))
+    cat(sprintf("[%s] decade %d/%d  %d-%d (%d yr)", format(Sys.time(), "%H:%M:%S"),
+                di, ndec, min(yrs_d), max(yrs_d), length(yrs_d)))
 
     # Representative window per job (crop x irrigation), constant within the decade.
     sda_l <- vector("list", njob); hda_l <- vector("list", njob)
@@ -169,11 +172,15 @@ generatePHUTserie_isimip3 <- function(
     }
     for (jj in seq_len(njob)) phu_dec[[jj]][, di] <- apply(pacc[[jj]], 1L, median, na.rm = TRUE)
     rm(pacc, sda_l, hda_l)
-    cat(" done\n")
+    el  <- as.numeric(Sys.time() - t_dec, units = "secs")
+    tot <- as.numeric(Sys.time() - t_all, units = "mins")
+    cat(sprintf("  done in %.0fs  (elapsed %.1f min, eta %.1f min)\n", el, tot, tot / di * (ndec - di)))
   } # decade
 
   # ------------------------------------------------------#
   # Write one netCDF per crop x irrigation (broadcast the decadal PHU over its years) ----
+  cat(sprintf("[%s] PHU computed in %.1f min; writing %d netCDFs ...\n",
+              format(Sys.time(), "%H:%M:%S"), as.numeric(Sys.time() - t_all, units = "mins"), njob))
   londim <- ncdim_def("lon", "degrees_east",  lons)
   latdim <- ncdim_def("lat", "degrees_north", lats)
   timdim <- ncdim_def("time", "year", years)
@@ -202,8 +209,10 @@ generatePHUTserie_isimip3 <- function(
     ncatt_put(ncout, 0, "Institution", "Potsdam Institute for Climate Impact Research (PIK), Germany")
     ncatt_put(ncout, 0, "history", paste("Created by Jens Heinke on", format(Sys.time(), "%Y-%m-%d")))
     nc_close(ncout)
-    cat("wrote", basename(ncfname), "\n")
+    cat(sprintf("  [%2d/%d] wrote %s\n", jj, njob, basename(ncfname)))
   }
+  cat(sprintf("[%s] %s %s DONE -- %d netCDFs in %.1f min total\n", format(Sys.time(), "%H:%M:%S"),
+              gcm, scen, njob, as.numeric(Sys.time() - t_all, units = "mins")))
 }
 
 

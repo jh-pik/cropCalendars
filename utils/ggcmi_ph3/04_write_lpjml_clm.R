@@ -111,11 +111,16 @@ hufile <- file(FN("phu"),   "wb"); fwriteheader2(hufile, "LPJmLHU", NBANDS, SY, 
 nc1_list <- lapply(nc1_paths, nc_open)
 nc2_list <- lapply(nc2_paths, nc_open)
 
-cat(sprintf("\n%s %s | %d bands | years %d-%d -> CLM (cell-major, int16)\n", gcm, scen, NBANDS, SY, EY))
+cat(sprintf("\n[%s] %s %s | %d bands | years %d-%d -> CLM (cell-major, int16)\n",
+            format(Sys.time(), "%H:%M:%S"), gcm, scen, NBANDS, SY, EY))
+t_all <- Sys.time()
 
 # ------------------------------------ #
 # Year by year: per band map 720x360 -> cells, write all bands of a cell contiguously.
 for (yy in seq_len(NYEARS)) {
+  if (yy %% 20L == 1L || yy == NYEARS)
+    cat(sprintf("[%s]   year %d/%d (%d)  elapsed %.1f min\n", format(Sys.time(), "%H:%M:%S"),
+                yy, NYEARS, years[yy], as.numeric(Sys.time() - t_all, units = "mins")))
   xsd <- matrix(0L, NCELLS, NBANDS); xhd <- matrix(0L, NCELLS, NBANDS); xph <- matrix(0L, NCELLS, NBANDS)
   for (bb in seq_len(NBANDS)) {
     sdate <- ncvar_get(nc1_list[[bb]], "planting_day-median", start = c(1, 1, yy), count = c(720, 360, 1))

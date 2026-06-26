@@ -183,14 +183,18 @@ if (length(blk) > 0) { t0 <- Sys.time()
               min(blk), max(blk), length(blk), as.numeric(Sys.time() - t0, units = "secs"))) }
 
 # Slide: push year P, ring then serves T = P+1. Stop once past the last needed year.
-if (last_needed - 1L >= serve_hi) for (P in serve_hi:(last_needed - 1L)) {
+t_all <- Sys.time(); P0 <- serve_hi; Plast <- last_needed - 1L
+if (Plast >= serve_hi) for (P in serve_hi:Plast) {
   t0 <- Sys.time()                       # time the whole iteration, incl. the climate read
   ring <- read_push(ring, P)
   Tn <- P + 1L
   if (Tn %in% years_write) {
     save_clim(Tn, ringClimatology(ring))
-    cat(sprintf("  year %d: %.1fs  (rss %.1f GB)\n", Tn, as.numeric(Sys.time() - t0, units = "secs"),
-                as.numeric(gc()[2, 2]) / 1024)) }
+    tot <- as.numeric(Sys.time() - t_all, units = "mins"); frac <- (P - P0 + 1L) / (Plast - P0 + 1L)
+    cat(sprintf("[%s]  year %d (%.0f%%): %.1fs  (rss %.1f GB, elapsed %.1f min, eta %.1f min)\n",
+                format(Sys.time(), "%H:%M:%S"), Tn, 100 * frac,
+                as.numeric(Sys.time() - t0, units = "secs"), as.numeric(gc()[2, 2]) / 1024,
+                tot, tot / frac - tot)) }
 }
 
 # Optional seed-ring cache for future-scenario runs (unchanged).

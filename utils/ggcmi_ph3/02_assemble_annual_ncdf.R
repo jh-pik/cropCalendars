@@ -235,11 +235,15 @@ assemble <- function(cro, irri) {
 
 # ---------------------------------------------------------------------------- #
 # Loop the requested crop x irrigation pairs; one bad crop must not abort the rest.
-fail <- character(0)
-for (p in pairs) {
-  cro <- p[1]; irri <- p[2]
+fail <- character(0); t_all <- Sys.time(); np <- length(pairs)
+for (pi in seq_along(pairs)) {
+  p <- pairs[[pi]]; cro <- p[1]; irri <- p[2]; t_p <- Sys.time()
+  cat(sprintf("[%s] [%2d/%d] %s-%s ...\n", format(Sys.time(), "%H:%M:%S"), pi, np, cro, irri))
   ok <- tryCatch({ assemble(cro, irri); TRUE },
                  error = function(ec) { cat(sprintf("  FAILED %s %s: %s\n", cro, irri, conditionMessage(ec))); FALSE })
+  if (ok) { tot <- as.numeric(Sys.time() - t_all, units = "mins")
+    cat(sprintf("  done in %.0fs  (elapsed %.1f min, eta %.1f min)\n",
+                as.numeric(Sys.time() - t_p, units = "secs"), tot, tot / pi * (np - pi))) }
   if (!ok) fail <- c(fail, paste0(cro, "-", irri))
 }
 cat(sprintf("\n%s %s: %d of %d crop-irrigation files written%s\n", gcm, scen,
