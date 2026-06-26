@@ -399,40 +399,34 @@ get.isimip.tas <- function(GCM, SC, SY, EY, ncells) {
 # day-by-day running sum; results match.
 .build_vrf_mat <- function(sdate_v, hdate_v, temp_mat, vd_vec,
                            vd_b = 0.2, tv1, tv2, tv3, tv4) {
-  nc       <- nrow(temp_mat)
-  temp730  <- cbind(temp_mat, temp_mat)
-  veff730  <- pmin(pmax(
-    ifelse(temp730 < tv1,  0,
-    ifelse(temp730 < tv2,  (temp730 - tv1) / (tv2 - tv1),
-    ifelse(temp730 <= tv3, 1,
-    ifelse(temp730 < tv4,  (tv4 - temp730) / (tv4 - tv3), 0)))), 0), 1)
-  cumveff730 <- t(apply(veff730, 1, cumsum))
+  nc      <- nrow(temp_mat)
+  temp730 <- cbind(temp_mat, temp_mat)
+  # Vernalization effectiveness: trapezoid (0 below tv1, 0->1 on [tv1,tv2], 1 on [tv2,tv3],
+  # 1->0 on [tv3,tv4], 0 above). pmin/pmax form of the old 4-level nested ifelse -- bitwise-
+  # identical and ~10x faster. The matrix is the FIRST pmin arg so its dim attribute survives.
+  veff730    <- pmax(pmin((temp730 - tv1) / (tv2 - tv1), (tv4 - temp730) / (tv4 - tv3), 1), 0)
+  cumveff730 <- t(apply(veff730, 1, cumsum))   # base cumsum (long-double accumulation); kept for bit-parity
 
-  vrf_mat <- matrix(1.0, nc, 365L)
-
-  for (i in seq_len(nc)) {
-    vd <- vd_vec[i]
-    if (vd <= 0) next
-
-    sd  <- sdate_v[i]
-    hd  <- if (sd < hdate_v[i]) hdate_v[i] else hdate_v[i] + 365L
-    cum0 <- if (sd > 1L) cumveff730[i, sd - 1L] else 0
-
-    k_seq   <- sd:min(hd, 730L)
-    cumvd   <- cumveff730[i, k_seq] - cum0
-    end_pos <- which(cumvd >= vd)[1L]
-    endday  <- if (!is.na(end_pos)) k_seq[end_pos] else Inf
-
-    last <- as.integer(min(endday, hd))
-    if (!is.finite(last)) next
-
-    for (k in sd:last) {
-      vdsum <- cumveff730[i, k] - cum0
-      k_mod <- if (k > 365L) k - 365L else k
-      vrf_mat[i, k_mod] <-
-        if (vdsum < vd * vd_b) 0
-        else max(0, min(1, (vdsum - vd * vd_b) / (vd * (1 - vd_b))))
-    }
-  }
-  vrf_mat
+  # Vectorised replacement of the old per-cell vernalization loop -- bitwise-identical given the
+  # same cumveff730. Work in the doubled-year (730 d) space so a season wrapping past Dec 31
+  # stays contiguous; fold back to 365 at the end.
+  active <- !is.na(vd_vec) & vd_vec > 0
+  hd   <- ifelse(sdate_v < hdate_v, hdate_v, hdate_v + 365L)          # window end (<= 730)
+  cum0 <- numeric(nc); g <- which(sdate_v > 1L)
+  if (length(g)) cum0[g] <- cumveff730[cbind(g, sdate_v[g] - 1L)]     # vern banked before sowing
+  vdsum <- cumveff730 - cum0                                          # nc x 730 (cum0 per row)
+  col   <- matrix(seq_len(730L), nc, 730L, byrow = TRUE)
+  # endday = first day in [sdate, hd] where vdsum reaches vd; throttle window end last = min(endday, hd).
+  reached <- active & (col >= sdate_v) & (col <= hd) & (vdsum >= vd_vec)
+  he   <- rowSums(reached) > 0L
+  end  <- rep(Inf, nc); if (any(he)) end[he] <- max.col(reached[he, , drop = FALSE], ties.method = "first")
+  last <- pmin(end, hd)
+  # vrf = ramp(vdsum) within [sdate, last] (0 until vd_b of vd is banked, then linear to 1),
+  # else 1 (and 1 for inactive cells -- vd <= 0).
+  in_win <- active & (col >= sdate_v) & (col <= last)
+  ramp   <- pmax(0, pmin(1, (vdsum - vd_vec * vd_b) / (vd_vec * (1 - vd_b))))
+  vrf730 <- matrix(1.0, nc, 730L); vrf730[in_win] <- ramp[in_win]
+  # Fold the doubled year back to 365: the wrap (second-year) value wins where present.
+  in2 <- in_win[, 366:730, drop = FALSE]
+  ifelse(in2, vrf730[, 366:730, drop = FALSE], vrf730[, 1:365, drop = FALSE])
 }
