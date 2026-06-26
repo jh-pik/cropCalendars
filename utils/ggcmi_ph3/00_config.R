@@ -157,7 +157,8 @@ winter_cold_margin <- 2        # COLD winter boundary (-10 C) deadband (deg C; 0
 
 climate_dirs  <- sub("/+$", "", strsplit(.settings$CLIMATE_DIR, ":")[[1]])  # search list
 climate_dir   <- climate_dirs[1]                                            # legacy (stage 01a)
-isimip3b.path <- .settings$ISIMIP3B_PATH # .clm climate
+isimip3b.path <- .settings$ISIMIP3B_PATH # .clm climate (ESM scenarios)
+isimip3a.path <- .settings$ISIMIP3A_PATH # .clm climate (obsclim/spinclim/counterclim)
 agmip_dir     <- .settings$AGMIP_DIR     # AgMIP reference crop calendars (used in 02)
 grid_file     <- .settings$GRID_BIN      # LPJmL grid path; read only in 03 to map product cells
                                          # onto the LPJmL grid order (03 writes netCDF, not .clm)

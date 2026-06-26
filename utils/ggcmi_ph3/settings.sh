@@ -35,6 +35,9 @@ CLIMATE_DIR=/p/projects/isimip/isimip/ISIMIP3b/InputData/climate/atmosphere/bias
 # ISIMIP3b .clm climate path used by generatePHUTserie_isimip3 (keep trailing slash).
 ISIMIP3B_PATH=/p/projects/lpjml/input/scenarios/ISIMIP3bv2/
 
+# ISIMIP3a .clm climate path (obsclim/spinclim/counterclim forcings; keep trailing slash).
+ISIMIP3A_PATH=/p/projects/lpjml/input/historical/ISIMIP3av2/
+
 # LPJmL grid file (defines the 67420 land cells / their lon-lat), read by 00_config.R.
 GRID_BIN=/p/projects/lpjml/input/historical/input_VERSION2/grid.bin
 

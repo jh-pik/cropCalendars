@@ -316,7 +316,10 @@ get.isimip.tas <- function(GCM, SC, SY, EY, ncells) {
 
   } else {
 
-    tas_fn <- paste.isimip3b.clm.fn(isimip3b.path, GCM, SC, "tas", FY1, LY1)
+    # Observational forcings (obsclim/spinclim/counterclim) live under the ISIMIP3a .clm tree,
+    # not ISIMIP3b; ESM scenarios use the ISIMIP3b tree. Same per-file layout (scen/gcm/...).
+    base   <- if (SC %in% names(obs_ranges)) isimip3a.path else isimip3b.path
+    tas_fn <- paste.isimip3b.clm.fn(base, GCM, SC, "tas", FY1, LY1)
 
     tas <- read.climate.input(tas_fn, ncells = ncells, ryear = FY1,
                               fyear = SY, lyear = EY, header = 43,
