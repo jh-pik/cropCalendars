@@ -1,8 +1,8 @@
 #' @title Generate decadal crop Phenological Heat Unit (PHU) netCDFs for LPJmL.
 #'
 #' @description One PHU per decade (broadcast to each year of the decade): for every
-#' decade the decadal-representative sowing/harvest (planting_day-median /
-#' maturity_day-median from the stage-02 product) defines a fixed growing window, the
+#' decade the decadal-representative sowing/harvest (planting_day-decadal /
+#' maturity_day-decadal from the stage-02 product) defines a fixed growing window, the
 #' PHU is accumulated for each year of the decade over that window from that year's daily
 #' temperature, and the per-cell median across the decade's years is taken. Decade
 #' boundaries match stage 02 (end in years divisible by 10).
@@ -146,8 +146,8 @@ generatePHUTserie_isimip3 <- function(
     sda_l <- vector("list", njob); hda_l <- vector("list", njob)
     for (jj in seq_len(njob)) {
       nc    <- nc_open(jobs[[jj]]$ncfile)
-      sdate <- ncvar_get(nc, "planting_day-median", start = c(1, 1, in_dec[1]), count = c(720, 360, 1))
-      hdate <- ncvar_get(nc, "maturity_day-median", start = c(1, 1, in_dec[1]), count = c(720, 360, 1))
+      sdate <- ncvar_get(nc, "planting_day-decadal", start = c(1, 1, in_dec[1]), count = c(720, 360, 1))
+      hdate <- ncvar_get(nc, "maturity_day-decadal", start = c(1, 1, in_dec[1]), count = c(720, 360, 1))
       nc_close(nc)
       sa <- as.integer(round(matrix(sdate, nrow = 720L * 360L)[lin_idx]))
       ha <- as.integer(round(matrix(hdate, nrow = 720L * 360L)[lin_idx]))

@@ -6,8 +6,8 @@
 #
 # Sources (decadal -- the PHU and the dates LPJmL is driven with all change only per
 # decade and are mutually consistent):
-#   sdate <- planting_day-median   (stage-02 product)
-#   hdate <- maturity_day-median   (stage-02 product)
+#   sdate <- planting_day-decadal   (stage-02 product)
+#   hdate <- maturity_day-decadal   (stage-02 product)
 #   phu   <- phu                   (stage-03 product, output/crop_calendars/ncdf)
 #
 # Args: GCM SCENARIO
@@ -119,12 +119,12 @@ rd <- function(cro, ir, var, yy) ncvar_get(getnc(cro, ir, if (var == "phu") "phu
 # One band's (sdate, hdate, phu) 720x360 fields for a year; "wheat" merges winter/spring.
 band_data <- function(tok, ir, yy) {
   if (tok == "wheat") {
-    win <- { s <- rd("wwh", ir, "planting_season-median", yy); !is.na(s) & s == 1 }   # winter where overwinters
-    list(sd = ifelse(win, rd("wwh", ir, "planting_day-median", yy), rd("swh", ir, "planting_day-median", yy)),
-         hd = ifelse(win, rd("wwh", ir, "maturity_day-median", yy), rd("swh", ir, "maturity_day-median", yy)),
+    win <- { s <- rd("wwh", ir, "planting_season-decadal", yy); !is.na(s) & s == 1 }   # winter where overwinters
+    list(sd = ifelse(win, rd("wwh", ir, "planting_day-decadal", yy), rd("swh", ir, "planting_day-decadal", yy)),
+         hd = ifelse(win, rd("wwh", ir, "maturity_day-decadal", yy), rd("swh", ir, "maturity_day-decadal", yy)),
          ph = ifelse(win, rd("wwh", ir, "phu", yy),                 rd("swh", ir, "phu", yy)))
   } else {
-    list(sd = rd(tok, ir, "planting_day-median", yy), hd = rd(tok, ir, "maturity_day-median", yy),
+    list(sd = rd(tok, ir, "planting_day-decadal", yy), hd = rd(tok, ir, "maturity_day-decadal", yy),
          ph = rd(tok, ir, "phu", yy))
   }
 }

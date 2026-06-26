@@ -139,7 +139,7 @@ assemble <- function(cro, irri) {
     # Vectorised (matrixStats::rowMedians + max.col) -- ~56x faster than the per-row apply()
     # and bitwise-identical: NA cells set to +Inf never win the argmin; all-NA rows -> NA pick.
     # The sowing SEASON (SS) of that SAME representative year is carried too, so the decadal
-    # planting_season-median is consistent with the decadal dates (used by the winter/spring
+    # planting_season-decadal is consistent with the decadal dates (used by the winter/spring
     # wheat merge in stage 04).
     med   <- matrixStats::rowMedians(GP, na.rm = TRUE)
     D     <- abs(GP - med)
@@ -191,15 +191,15 @@ assemble <- function(cro, irri) {
   }
 
   # Default-date cells (GGCMI observed, broadcast over years): the representative is just that constant.
-  # Default crops have no seasonality (ss is NA), so planting_season-median stays NA there.
+  # Default crops have no seasonality (ss is NA), so planting_season-decadal stays NA there.
   pd_med[isdef] <- pd[isdef]; md_med[isdef] <- md[isdef]; ss_med[isdef] <- ss[isdef]
 
   to_grid <- function(field) { A <- matrix(NA_real_, nlon * nlat, nyears); A[lin, ] <- field
     dim(A) <- c(nlon, nlat, nyears); A }
   AR <- list(planting_day = to_grid(pd), maturity_day = to_grid(md), growing_period = to_grid(gp),
              seasonality = to_grid(seas), harvest_reason = to_grid(hr), planting_season = to_grid(ss),
-             "planting_day-median" = to_grid(pd_med), "maturity_day-median" = to_grid(md_med),
-             "planting_season-median" = to_grid(ss_med))
+             "planting_day-decadal" = to_grid(pd_med), "maturity_day-decadal" = to_grid(md_med),
+             "planting_season-decadal" = to_grid(ss_med))
 
   # ------------------------------------ #
   # Write the DRS-compliant NetCDF (one pass).
@@ -218,9 +218,9 @@ assemble <- function(cro, irri) {
     seasonality     = def("seasonality",     "-", "Climate seasonality type, (1=No Seas; 2=Prec; 3=PrecTemp; 4=Temp; 5=TempPrec)"),
     harvest_reason  = def("harvest_reason",  "-", "Rule triggering harvest (1=GPmin; 2=GPmed; 3=GPmax; 4=Wstress; 5=Topt; 6=Thigh)"),
     planting_season = def("planting_season", "days", "Sowing season (1=Winter; 2=Spring)"),
-    "planting_day-median" = def("planting_day-median", "day of year", "Decadal representative sowing date: sowing of the year with the median growing period in the decade (same value for each year of the decade)"),
-    "maturity_day-median" = def("maturity_day-median", "day of year", "Decadal representative harvest date: harvest of the year with the median growing period in the decade (same value for each year of the decade)"),
-    "planting_season-median" = def("planting_season-median", "-", "Sowing season (1=Winter; 2=Spring) of the decadal representative year (the median-growing-period year; same value for each year of the decade)"))
+    "planting_day-decadal" = def("planting_day-decadal", "day of year", "Decadal representative sowing date: sowing of the year with the median growing period in the decade (same value for each year of the decade)"),
+    "maturity_day-decadal" = def("maturity_day-decadal", "day of year", "Decadal representative harvest date: harvest of the year with the median growing period in the decade (same value for each year of the decade)"),
+    "planting_season-decadal" = def("planting_season-decadal", "-", "Sowing season (1=Winter; 2=Spring) of the decadal representative year (the median-growing-period year; same value for each year of the decade)"))
 
   ncout <- nc_create(ncfname, vdef, force_v4 = TRUE, verbose = FALSE)
   for (v in names(vdef)) {
