@@ -51,19 +51,28 @@ SY <- as.integer(m[2]); EY <- as.integer(m[3])
 years <- SY:EY; NYEARS <- length(years)
 
 # ------------------------------------ #
-# 30 bands: 15 crops rainfed, then 15 crops irrigated (LPJmL band order).
-crops  <- crop_ls[["ggcmi"]]
-bands  <- rep(crops, 2)
-irris  <- rep(c("rf", "ir"), each = length(crops))
-NBANDS <- length(bands)
-
+# Band layouts. By default BOTH are written; BANDS env (e.g. "24", "30", "24 30") restricts.
+#   30-band: the 15 GGCMI crops, rainfed (1-15) then irrigated (16-30).
+#   24-band: the 12 LPJmL CFTs, rainfed (1-12) then irrigated (13-24). GGCMI->CFT mapping
+#     (create_lpjml_sdate_hdate_input.R): Wheat (winter/spring merged), Rice<-rice1, Maize,
+#     Sorghum (tropical cereals), Pulses<-peas, Temperate_Roots<-sugar_beet, Tropical_Roots
+#     <-cassava, Sunflower, Soybean, Groundnut<-nuts, Rapeseed, Sugarcane. The "wheat" band
+#     takes winter_wheat where its decadal-representative season is winter (planting_season-
+#     median == 1), else spring_wheat (merge_winter_spring_wheat.R).
 date_nc <- function(cro, ir) paste0(cal_dir, "ggcmi-crop-calendar_", gcm_lc, "_", soc_file,
                                     "_", cro, "-", irr_tok(ir), "_annual_", SY, "_", EY, ".nc")
 phu_nc  <- function(cro, ir) paste0(phu_dir, cro, "_", ir, "_", gcm, "_", scen, "_",
                                     SY, "-", EY, "_ggcmi_ph3_rule_based_phu.nc4")
-nc1_paths <- mapply(date_nc, bands, irris)   # dates (planting/maturity-median)
-nc2_paths <- mapply(phu_nc,  bands, irris)   # phu
-miss <- c(nc1_paths, nc2_paths)[!file.exists(c(nc1_paths, nc2_paths))]
+layouts <- list("24" = c("wheat", "ri1", "mai", "sor", "pea", "sgb", "cas", "sun", "soy", "nut", "rap", "sgc"),
+                "30" = crop_ls[["ggcmi"]])
+modes <- strsplit(trimws(Sys.getenv("BANDS", "24 30")), "[, ]+")[[1]]; modes <- modes[nzchar(modes)]
+if (!all(modes %in% names(layouts))) stop("BANDS must be from {24,30}; got: ", Sys.getenv("BANDS"))
+
+# Crops actually needed (union over modes; the "wheat" band needs wwh + swh).
+need <- unique(unlist(lapply(modes, function(m) { L <- layouts[[m]]
+  c(L[L != "wheat"], if ("wheat" %in% L) c("wwh", "swh")) })))
+ncfiles <- c(outer(need, c("rf", "ir"), Vectorize(date_nc)), outer(need, c("rf", "ir"), Vectorize(phu_nc)))
+miss <- ncfiles[!file.exists(ncfiles)]
 if (length(miss) > 0) stop("Missing input(s) (run stages 02 & 03 first):\n  ", paste(miss, collapse = "\n  "))
 
 # ------------------------------------ #
@@ -74,7 +83,7 @@ grid_df <- data.frame(lon = round(as.numeric(grid_io$data[, 1, 1]), 2),
                       lat = round(as.numeric(grid_io$data[, 1, 2]), 2))
 if (nrow(grid_df) != NCELLS) stop("Unexpected grid cell count: ", nrow(grid_df))
 
-nc_tmp <- nc_open(nc1_paths[1]); lons <- ncvar_get(nc_tmp, "lon"); lats <- ncvar_get(nc_tmp, "lat")
+nc_tmp <- nc_open(date_nc(need[1], "rf")); lons <- ncvar_get(nc_tmp, "lon"); lats <- ncvar_get(nc_tmp, "lat")
 pmask  <- !is.na(ncvar_get(nc_tmp, "planting_day", start = c(1, 1, 1), count = c(720, 360, 1)))
 nc_close(nc_tmp)
 lin_idx <- (match(grid_df$lat, lats) - 1L) * 720L + match(grid_df$lon, lons)
@@ -101,39 +110,54 @@ fwriteheader2 <- function(con, headername, bands, firstyear, nyears,
   writeBin(c(resolution, scalar), con, size = 4, endian = .Platform$endian)   # float32 CELLSIZE, SCALAR
 }
 
-FN <- function(v) paste0(clm_dir, v, "_", gcm, "_", scen, "_", SY, "_", EY,
-                         "_ggcmi_ph3_rule_based_crop_calendar_30bands.clm")
-sdfile <- file(FN("sdate"), "wb"); fwriteheader2(sdfile, "LPJSOWD", NBANDS, SY, NYEARS)
-hdfile <- file(FN("hdate"), "wb"); fwriteheader2(hdfile, "LPJSOWD", NBANDS, SY, NYEARS)
-hufile <- file(FN("phu"),   "wb"); fwriteheader2(hufile, "LPJmLHU", NBANDS, SY, NYEARS)
-
-# Open all ncdfs once.
-nc1_list <- lapply(nc1_paths, nc_open)
-nc2_list <- lapply(nc2_paths, nc_open)
-
-cat(sprintf("\n[%s] %s %s | %d bands | years %d-%d -> CLM (cell-major, int16)\n",
-            format(Sys.time(), "%H:%M:%S"), gcm, scen, NBANDS, SY, EY))
-t_all <- Sys.time()
-
-# ------------------------------------ #
-# Year by year: per band map 720x360 -> cells, write all bands of a cell contiguously.
-for (yy in seq_len(NYEARS)) {
-  if (yy %% 20L == 1L || yy == NYEARS)
-    cat(sprintf("[%s]   year %d/%d (%d)  elapsed %.1f min\n", format(Sys.time(), "%H:%M:%S"),
-                yy, NYEARS, years[yy], as.numeric(Sys.time() - t_all, units = "mins")))
-  xsd <- matrix(0L, NCELLS, NBANDS); xhd <- matrix(0L, NCELLS, NBANDS); xph <- matrix(0L, NCELLS, NBANDS)
-  for (bb in seq_len(NBANDS)) {
-    sdate <- ncvar_get(nc1_list[[bb]], "planting_day-median", start = c(1, 1, yy), count = c(720, 360, 1))
-    hdate <- ncvar_get(nc1_list[[bb]], "maturity_day-median", start = c(1, 1, yy), count = c(720, 360, 1))
-    phu   <- ncvar_get(nc2_list[[bb]], "phu",                 start = c(1, 1, yy), count = c(720, 360, 1))
-    xsd[, bb] <- sdate[lin_idx]; xhd[, bb] <- hdate[lin_idx]; xph[, bb] <- phu[lin_idx]
+# Cached nc handles + field reader; each (crop, irri, date|phu) opened once.
+nccache <- new.env()
+getnc <- function(cro, ir, kind) { key <- paste(cro, ir, kind); h <- nccache[[key]]
+  if (is.null(h)) { h <- nc_open(if (kind == "phu") phu_nc(cro, ir) else date_nc(cro, ir)); assign(key, h, nccache) }; h }
+rd <- function(cro, ir, var, yy) ncvar_get(getnc(cro, ir, if (var == "phu") "phu" else "date"),
+                                           var, start = c(1, 1, yy), count = c(720, 360, 1))
+# One band's (sdate, hdate, phu) 720x360 fields for a year; "wheat" merges winter/spring.
+band_data <- function(tok, ir, yy) {
+  if (tok == "wheat") {
+    win <- { s <- rd("wwh", ir, "planting_season-median", yy); !is.na(s) & s == 1 }   # winter where overwinters
+    list(sd = ifelse(win, rd("wwh", ir, "planting_day-median", yy), rd("swh", ir, "planting_day-median", yy)),
+         hd = ifelse(win, rd("wwh", ir, "maturity_day-median", yy), rd("swh", ir, "maturity_day-median", yy)),
+         ph = ifelse(win, rd("wwh", ir, "phu", yy),                 rd("swh", ir, "phu", yy)))
+  } else {
+    list(sd = rd(tok, ir, "planting_day-median", yy), hd = rd(tok, ir, "maturity_day-median", yy),
+         ph = rd(tok, ir, "phu", yy))
   }
-  xsd[is.na(xsd)] <- 0L; xhd[is.na(xhd)] <- 0L; xph[is.na(xph)] <- 0L
-  writeBin(as.integer(c(t(xsd))), sdfile, size = 2, endian = .Platform$endian)
-  writeBin(as.integer(c(t(xhd))), hdfile, size = 2, endian = .Platform$endian)
-  writeBin(as.integer(c(t(xph))), hufile, size = 2, endian = .Platform$endian)
 }
 
-for (bb in seq_len(NBANDS)) { nc_close(nc1_list[[bb]]); nc_close(nc2_list[[bb]]) }
-close(sdfile); close(hdfile); close(hufile)
+# ------------------------------------ #
+# Write one CLM set (sdate/hdate/phu) for a band layout.
+write_mode <- function(mode) {
+  L <- layouts[[mode]]; NCFT <- length(L); NB <- NCFT * 2L
+  btok <- rep(L, 2); bir <- rep(c("rf", "ir"), each = NCFT)
+  fn <- function(v) paste0(clm_dir, v, "_", gcm, "_", scen, "_", SY, "_", EY,
+                           "_ggcmi_ph3_rule_based_crop_calendar_", NB, "bands.clm")
+  sdf <- file(fn("sdate"), "wb"); fwriteheader2(sdf, "LPJSOWD", NB, SY, NYEARS)
+  hdf <- file(fn("hdate"), "wb"); fwriteheader2(hdf, "LPJSOWD", NB, SY, NYEARS)
+  huf <- file(fn("phu"),   "wb"); fwriteheader2(huf, "LPJmLHU", NB, SY, NYEARS)
+  cat(sprintf("\n[%s] %s %s | %d bands | years %d-%d -> CLM (cell-major, int16)\n",
+              format(Sys.time(), "%H:%M:%S"), gcm, scen, NB, SY, EY))
+  t0 <- Sys.time()
+  for (yy in seq_len(NYEARS)) {
+    if (yy %% 20L == 1L || yy == NYEARS)
+      cat(sprintf("[%s]   %d-band year %d/%d (%d)  elapsed %.1f min\n", format(Sys.time(), "%H:%M:%S"),
+                  NB, yy, NYEARS, years[yy], as.numeric(Sys.time() - t0, units = "mins")))
+    xsd <- matrix(0L, NCELLS, NB); xhd <- matrix(0L, NCELLS, NB); xph <- matrix(0L, NCELLS, NB)
+    for (bb in seq_len(NB)) { bd <- band_data(btok[bb], bir[bb], yy)
+      xsd[, bb] <- bd$sd[lin_idx]; xhd[, bb] <- bd$hd[lin_idx]; xph[, bb] <- bd$ph[lin_idx] }
+    xsd[is.na(xsd)] <- 0L; xhd[is.na(xhd)] <- 0L; xph[is.na(xph)] <- 0L
+    writeBin(as.integer(c(t(xsd))), sdf, size = 2, endian = .Platform$endian)
+    writeBin(as.integer(c(t(xhd))), hdf, size = 2, endian = .Platform$endian)
+    writeBin(as.integer(c(t(xph))), huf, size = 2, endian = .Platform$endian)
+  }
+  close(sdf); close(hdf); close(huf)
+  cat(sprintf("[%s]   %d-band CLM written (sdate/hdate/phu)\n", format(Sys.time(), "%H:%M:%S"), NB))
+}
+
+for (m in modes) write_mode(m)
+for (k in ls(nccache)) nc_close(get(k, nccache))
 cat("\nwrote CLM files to:", clm_dir, "\n"); print(Sys.time() - stime)

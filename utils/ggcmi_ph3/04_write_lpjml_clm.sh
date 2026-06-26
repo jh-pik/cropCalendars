@@ -6,13 +6,16 @@
 # Guarded on BOTH the stage-02 product and the stage-03 PHU output, so a combo runs only
 # once its inputs exist (invalid combos and not-yet-computed scenarios auto-skip).
 #
-# Env: GCMS (space-sep; default all 6), SCENS (default all), PARTITION (default standard),
-#      QOS (default short), DRYRUN=1 (print, don't submit).
+# Writes BOTH the 24-band (12 LPJmL CFTs) and 30-band (15 GGCMI crops) CLM by default.
+#
+# Env: GCMS (space-sep; default all 6), SCENS (default all), BANDS (default "24 30"),
+#      PARTITION (default standard), QOS (default short), DRYRUN=1 (print, don't submit).
 
 source "$(dirname "$(readlink -f "$0")")/settings.sh"
 
 PARTITION=${PARTITION:-standard}
 QOS=${QOS:-short}
+BANDS=${BANDS:-"24 30"}
 GCMS=${GCMS:-"GSWP3-W5E5 GFDL-ESM4 IPSL-CM6A-LR MPI-ESM1-2-HR MRI-ESM2-0 UKESM1-0-LL"}
 SCENS=${SCENS:-"historical obsclim ssp126 ssp245 ssp370 ssp585 ssp119 ssp460 ssp534-over"}
 WD="$(dirname "$(readlink -f "$0")")"
@@ -42,7 +45,7 @@ for g in $GCMS; do
     fi
     CMD=(sbatch --ntasks=1 --cpus-per-task=1 --mem=8G -t 01:00:00 -J clm_${g}_${s} \
       -A "${ACCOUNT}" --chdir="${WD}" -p "${PARTITION}" --qos=${QOS} \
-      -o logs/clm_${g}_${s}-%j.out \
+      -o logs/clm_${g}_${s}-%j.out --export=ALL,BANDS="${BANDS}" \
       --wrap="source ${WD}/env.sh; load_r_env; Rscript 04_write_lpjml_clm.R ${g} ${s}")
     if [ "${DRYRUN:-0}" = "1" ]; then printf '%q ' "${CMD[@]}"; echo; else "${CMD[@]}"; fi
     echo "queued ${g} ${s}"
