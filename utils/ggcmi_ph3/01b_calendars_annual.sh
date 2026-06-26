@@ -13,6 +13,7 @@
 # Runnable matrix (per available 01a climatology, 2026-06):
 #   historical : all 5 GCMs            obsclim : GSWP3-W5E5
 #   ssp126/245/370/585 : all 5 GCMs    ssp119/460 : IPSL-CM6A-LR, MRI-ESM2-0 only
+#   ssp534-over : IPSL-CM6A-LR, MRI-ESM2-0, UKESM1-0-LL (overshoot, 2040-2100)
 
 source "$(dirname "$(readlink -f "$0")")/settings.sh"
 source "$(dirname "$(readlink -f "$0")")/env.sh"
@@ -21,12 +22,14 @@ CORES=${CORES:-128}
 QOS=${QOS:-standby}
 YEARS=${YEARS:-}
 CROPS=${CROPS:-}
+SCENS=${SCENS:-"historical obsclim ssp126 ssp245 ssp370 ssp585 ssp119 ssp460 ssp534-over"}  # scenario subset
 WD="$(dirname "$(readlink -f "$0")")"
 CLIM="${WD%/cropCalendars/*}/output/crop_calendars/annual_climatology"   # 01a output root
 mkdir -p "${WD}/logs"
 
 ALL5="GFDL-ESM4 IPSL-CM6A-LR MPI-ESM1-2-HR MRI-ESM2-0 UKESM1-0-LL"
 IM="IPSL-CM6A-LR MRI-ESM2-0"
+IMU="IPSL-CM6A-LR MRI-ESM2-0 UKESM1-0-LL"
 declare -A SC
 SC[historical]="$ALL5"
 SC[obsclim]="GSWP3-W5E5"
@@ -36,9 +39,10 @@ SC[ssp370]="$ALL5"
 SC[ssp585]="$ALL5"
 SC[ssp119]="$IM"
 SC[ssp460]="$IM"
+SC[ssp534-over]="$IMU"
 
 n=0; skip=0
-for s in historical obsclim ssp126 ssp245 ssp370 ssp585 ssp119 ssp460; do
+for s in $SCENS; do
   for g in ${SC[$s]}; do
     if [ ! -d "${CLIM}/${s}/${g}" ] || [ -z "$(ls -A "${CLIM}/${s}/${g}"/climatology_*.Rdata 2>/dev/null)" ]; then
       echo "SKIP ${g} ${s}: no climatology at ${CLIM}/${s}/${g}"; skip=$((skip+1)); continue

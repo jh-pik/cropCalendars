@@ -68,14 +68,39 @@ discover_clm <- function(scenario, var) {
   character(0)
 }
 seeded <- grepl("^ssp", scen)
+# ssp534-over (SSP5-3.4 overshoot) only has its own climate from 2040 on; per the
+# ISIMIP3b overshoot convention (climate_nc2clm_ISIMIP3B_overshoot.sh: scen_name_pre
+# = ssp585, skipyear = 2040), the run FOLLOWS ssp585 THROUGH 2040 and uses the
+# overshoot's own data only from 2041 on. So the early sliding window is filled from
+# ssp585 up to AND INCLUDING the branch year 2040 (historical covers <= 2014), and
+# those ssp585 fillers PRECEDE the ssp534-over files: the duplicated 2040 (ssp585's
+# 2031_2040 chunk vs ssp534-over's 2040_2040 file) then resolves to ssp585 -- mirroring
+# the reference's -skipyear 2040 -- while 2041+ falls through to ssp534-over (the
+# ssp585 fillers are truncated at <= 2040). read_year_cells takes the FIRST file in
+# the list covering a given year, so list order encodes this precedence.
+gap_scen    <- if (scen == "ssp534-over") "ssp585" else NA_character_
+branch_year <- 2040L
 clm_file_list <- list()
 for (v in vars) {
   fv <- discover_clm(scen, v)
   if (length(fv) == 0) stop("No climate files for ", gcm, " / ", scen, " / ", v)
-  clm_file_list[[v]] <- if (seeded) c(discover_clm("historical", v), fv) else fv
+  fill <- character(0)
+  if (!is.na(gap_scen)) {
+    ff <- discover_clm(gap_scen, v)                       # ssp585 chunks, sorted
+    fill <- ff[file_year_range(ff)$fy <= branch_year]     # ... truncated to <= branch year (2015-2040)
+  }
+  clm_file_list[[v]] <- if (seeded) c(discover_clm("historical", v), fill, fv) else fv
 }
-scen_rng <- file_year_range(discover_clm(scen, "tas"))
-Y0 <- min(scen_rng$fy); Yend <- max(scen_rng$ly)
+# Product year range. A gap scenario (ssp534-over) is written in FULL as an ordinary
+# continuous ssp: it STARTS at the filler scenario's first year (ssp585 2015) and ends
+# at its own last year (2100). Seeded from the existing end-2014 historical ring and fed
+# identical ssp585 climate through 2040, the 2015-2040 calendars come out identical to
+# ssp585 (no cold-start discontinuity); 2041+ diverges. Writing the full series lets the
+# downstream stages treat ssp534-over like any other ssp -- no special handling, and no
+# need to bank a post-2040 seed ring.
+own_rng <- file_year_range(discover_clm(scen, "tas"))
+Yend <- max(own_rng$ly)
+Y0   <- if (!is.na(gap_scen)) min(file_year_range(discover_clm(gap_scen, "tas"))$fy) else min(own_rng$fy)
 read_year_cells <- function(fnames, yr, conv = identity) {
   rng <- file_year_range(fnames); wi <- which(rng$fy <= yr & rng$ly >= yr)[1]
   if (is.na(wi)) stop("No climate file covering year ", yr)

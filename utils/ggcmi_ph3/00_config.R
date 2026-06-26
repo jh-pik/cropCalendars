@@ -159,7 +159,8 @@ climate_dirs  <- sub("/+$", "", strsplit(.settings$CLIMATE_DIR, ":")[[1]])  # se
 climate_dir   <- climate_dirs[1]                                            # legacy (stage 01a)
 isimip3b.path <- .settings$ISIMIP3B_PATH # .clm climate
 agmip_dir     <- .settings$AGMIP_DIR     # AgMIP reference crop calendars (used in 02)
-grid_file     <- .settings$GRID_BIN      # LPJmL grid path; read only in 03 (.clm writing)
+grid_file     <- .settings$GRID_BIN      # LPJmL grid path; read only in 03 to map product cells
+                                         # onto the LPJmL grid order (03 writes netCDF, not .clm)
 
 # Climate input forcings (ESMs + the GSWP3-W5E5 observational forcing).
 gcms <- c(
@@ -172,13 +173,15 @@ gcms <- c(
 )
 
 # Scenarios available per forcing -- the (GCM x scenario) processing matrix.
+# ssp534-over (SSP5-3.4 overshoot, 2040-2100) is available for IPSL/MRI/UKESM only; its
+# pre-2040 sliding window is gap-filled from ssp585 (see 01a_climatology_annual.R).
 scenarios <- list(
   "GSWP3-W5E5"    = c("spinclim", "obsclim"),
   "GFDL-ESM4"     = c("historical", "ssp126", "ssp245", "ssp370", "ssp585"),
-  "IPSL-CM6A-LR"  = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", "ssp585"),
+  "IPSL-CM6A-LR"  = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", "ssp585", "ssp534-over"),
   "MPI-ESM1-2-HR" = c("historical", "ssp126", "ssp245", "ssp370", "ssp585"),
-  "MRI-ESM2-0"    = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", "ssp585"),
-  "UKESM1-0-LL"   = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp585")
+  "MRI-ESM2-0"    = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", "ssp585", "ssp534-over"),
+  "UKESM1-0-LL"   = c("historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp585", "ssp534-over")
 )
 # Union of all scenarios, used to build the file-window lists below.
 scens <- sort(unique(unlist(scenarios, use.names = FALSE)))
