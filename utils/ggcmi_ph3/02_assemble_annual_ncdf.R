@@ -134,10 +134,13 @@ assemble <- function(cro, irri) {
   # Decades END in a year divisible by 10 (..1860, 1870, .., 2010, 2020). The first group absorbs the
   # pre-1851 lead-in (1850 -> the 1850-1860 group; the calendar is ~constant there anyway).
   decade <- pmax(0L, (years_nc - 1851L) %/% 10L)
-  rep_from <- function(GP, SOW, MAT) {                               # median-growing-period representative per cell
+  rep_from <- function(GP, SOW, MAT, SS) {                           # median-growing-period representative per cell
     # Per cell: the decade-year whose GP is closest to the cell's median GP (first on ties).
     # Vectorised (matrixStats::rowMedians + max.col) -- ~56x faster than the per-row apply()
     # and bitwise-identical: NA cells set to +Inf never win the argmin; all-NA rows -> NA pick.
+    # The sowing SEASON (SS) of that SAME representative year is carried too, so the decadal
+    # planting_season-median is consistent with the decadal dates (used by the winter/spring
+    # wheat merge in stage 04).
     med   <- matrixStats::rowMedians(GP, na.rm = TRUE)
     D     <- abs(GP - med)
     allna <- rowSums(!is.na(D)) == 0L
@@ -145,14 +148,16 @@ assemble <- function(cro, irri) {
     pick  <- max.col(-D, ties.method = "first")                      # row argmin == which.min (first on ties)
     pick[allna] <- NA_integer_
     ok    <- which(!is.na(pick)); sel <- cbind(ok, pick[ok])
-    list(ok = ok, sow = SOW[sel], mat = MAT[sel])
+    list(ok = ok, sow = SOW[sel], mat = MAT[sel], ss = SS[sel])
   }
   pd_med <- matrix(NA_real_, ncell, nyears); md_med <- matrix(NA_real_, ncell, nyears)
+  ss_med <- matrix(NA_real_, ncell, nyears)
   for (d in unique(decade)) {
     cols <- which(decade == d)
-    r    <- rep_from(gp[, cols, drop = FALSE], pd[, cols, drop = FALSE], md[, cols, drop = FALSE])
+    r    <- rep_from(gp[, cols, drop = FALSE], pd[, cols, drop = FALSE], md[, cols, drop = FALSE], ss[, cols, drop = FALSE])
     pd_med[r$ok, cols] <- r$sow                                      # broadcast across the decade's years
     md_med[r$ok, cols] <- r$mat
+    ss_med[r$ok, cols] <- r$ss
   }
 
   # 2011-2020 decade: complete it with ssp245 (2015-2020) spliced onto historical (2011-2014), and apply
@@ -170,28 +175,31 @@ assemble <- function(cro, irri) {
       if (!isTRUE(all.equal(e2$grid_clm, grid_clm, check.attributes = FALSE))) return(NULL)
       yy <- as.integer(e2$emit_years); k <- which(yy >= yr_lo & yy <= yr_hi); if (!length(k)) return(NULL)
       list(gp  = e2$cal[[paste0("gp_", irri)]][, k, drop = FALSE], sow = e2$cal$sow[, k, drop = FALSE],
-           mat = e2$cal[[paste0("maty_", irri)]][, k, drop = FALSE])
+           mat = e2$cal[[paste0("maty_", irri)]][, k, drop = FALSE], ss = e2$cal$ss[, k, drop = FALSE])
     }
     parts <- Filter(Negate(is.null), list(grab("historical", 2011, 2014), grab("ssp245", 2015, 2020)))
     if (length(parts) && all(vapply(parts, function(p) nrow(p$gp) == ncell, logical(1)))) {
       r <- rep_from(do.call(cbind, lapply(parts, `[[`, "gp")),
                     do.call(cbind, lapply(parts, `[[`, "sow")),
-                    do.call(cbind, lapply(parts, `[[`, "mat")))
+                    do.call(cbind, lapply(parts, `[[`, "mat")),
+                    do.call(cbind, lapply(parts, `[[`, "ss")))
       g16cols <- which(decade == g16)
-      pd_med[r$ok, g16cols] <- r$sow; md_med[r$ok, g16cols] <- r$mat
+      pd_med[r$ok, g16cols] <- r$sow; md_med[r$ok, g16cols] <- r$mat; ss_med[r$ok, g16cols] <- r$ss
     } else if (scen != "historical") {
       cat("  NOTE: ssp245/historical 2011-2020 splice unavailable (grid/file); 2011-2020 uses in-scenario median\n")
     }
   }
 
   # Default-date cells (GGCMI observed, broadcast over years): the representative is just that constant.
-  pd_med[isdef] <- pd[isdef]; md_med[isdef] <- md[isdef]
+  # Default crops have no seasonality (ss is NA), so planting_season-median stays NA there.
+  pd_med[isdef] <- pd[isdef]; md_med[isdef] <- md[isdef]; ss_med[isdef] <- ss[isdef]
 
   to_grid <- function(field) { A <- matrix(NA_real_, nlon * nlat, nyears); A[lin, ] <- field
     dim(A) <- c(nlon, nlat, nyears); A }
   AR <- list(planting_day = to_grid(pd), maturity_day = to_grid(md), growing_period = to_grid(gp),
              seasonality = to_grid(seas), harvest_reason = to_grid(hr), planting_season = to_grid(ss),
-             "planting_day-median" = to_grid(pd_med), "maturity_day-median" = to_grid(md_med))
+             "planting_day-median" = to_grid(pd_med), "maturity_day-median" = to_grid(md_med),
+             "planting_season-median" = to_grid(ss_med))
 
   # ------------------------------------ #
   # Write the DRS-compliant NetCDF (one pass).
@@ -211,7 +219,8 @@ assemble <- function(cro, irri) {
     harvest_reason  = def("harvest_reason",  "-", "Rule triggering harvest (1=GPmin; 2=GPmed; 3=GPmax; 4=Wstress; 5=Topt; 6=Thigh)"),
     planting_season = def("planting_season", "days", "Sowing season (1=Winter; 2=Spring)"),
     "planting_day-median" = def("planting_day-median", "day of year", "Decadal representative sowing date: sowing of the year with the median growing period in the decade (same value for each year of the decade)"),
-    "maturity_day-median" = def("maturity_day-median", "day of year", "Decadal representative harvest date: harvest of the year with the median growing period in the decade (same value for each year of the decade)"))
+    "maturity_day-median" = def("maturity_day-median", "day of year", "Decadal representative harvest date: harvest of the year with the median growing period in the decade (same value for each year of the decade)"),
+    "planting_season-median" = def("planting_season-median", "-", "Sowing season (1=Winter; 2=Spring) of the decadal representative year (the median-growing-period year; same value for each year of the decade)"))
 
   ncout <- nc_create(ncfname, vdef, force_v4 = TRUE, verbose = FALSE)
   for (v in names(vdef)) {

@@ -16,6 +16,7 @@ source "$(dirname "$(readlink -f "$0")")/settings.sh"
 PARTITION=${PARTITION:-standard}
 QOS=${QOS:-short}
 SCENS=${SCENS:-"historical obsclim ssp126 ssp245 ssp370 ssp585 ssp119 ssp460 ssp534-over"}  # scenario subset
+GCMS=${GCMS:-"GSWP3-W5E5 GFDL-ESM4 IPSL-CM6A-LR MPI-ESM1-2-HR MRI-ESM2-0 UKESM1-0-LL"}       # gcm subset
 WD="$(dirname "$(readlink -f "$0")")"
 ANN="${OUTPUT_DIR}crop_calendars/annual"
 mkdir -p "${WD}/logs"
@@ -37,6 +38,7 @@ SC[ssp534-over]="$IMU"
 n=0; skip=0
 for s in $SCENS; do
   for g in ${SC[$s]}; do
+    case " $GCMS " in *" $g "*) ;; *) continue ;; esac   # gcm subset filter
     if [ ! -d "${ANN}/${s}/${g}" ] || [ -z "$(ls -A "${ANN}/${s}/${g}"/annual_calendar_*.Rdata 2>/dev/null)" ]; then
       echo "SKIP ${g} ${s}: no annual calendars at ${ANN}/${s}/${g}"; skip=$((skip+1)); continue
     fi
