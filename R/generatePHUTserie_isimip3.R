@@ -1,244 +1,209 @@
-#' @title Generate an annual crop Phenological Heat Unit (PHU) time series
-#' for the LPJmL model.
+#' @title Generate decadal crop Phenological Heat Unit (PHU) netCDFs for LPJmL.
+#'
+#' @description One PHU per decade (broadcast to each year of the decade): for every
+#' decade the decadal-representative sowing/harvest (planting_day-median /
+#' maturity_day-median from the stage-02 product) defines a fixed growing window, the
+#' PHU is accumulated for each year of the decade over that window from that year's daily
+#' temperature, and the per-cell median across the decade's years is taken. Decade
+#' boundaries match stage 02 (end in years divisible by 10).
+#'
+#' All crop x irrigation combinations of one gcm x scenario are processed in a SINGLE
+#' call so each year's daily temperature is read ONCE and reused across crops (the
+#' temperature is crop-independent) -- one compact job per gcm x scenario instead of
+#' one per crop. One netCDF is written per crop x irrigation.
 #'
 #' @export
 generatePHUTserie_isimip3 <- function(
     ncdir         = NULL,
     gcm           = NULL,
     scen          = NULL,
-    cro           = NULL,
-    irri          = NULL,
-    SYs           = NULL,
-    EYs           = NULL,
+    cros          = NULL,    # ggcmi crop tokens (e.g. c("wwh","mai",...))
+    irris         = c("rf", "ir"),
     FYnc          = NULL,
     LYnc          = NULL,
     grid_df       = NULL,
-    crop_par_file = NULL,
-    ncfile        = NULL,
-    smooth_window = 1L
-
+    cal_dir       = NULL,    # stage-02 product directory (gcm x scenario)
+    soc_file      = NULL,    # soc token in the stage-02 filename (histsoc / <ssp> / countersoc)
+    crop_par_file = NULL
 ) {
-  # grid_df (LPJmL grid: data.frame with lon/lat) is now an explicit argument rather
-  # than a global read from the caller's environment. years/nyears are derived from
-  # FYnc:LYnc here for the same reason (they were the only remaining hidden globals).
   if (is.null(grid_df)) stop("generatePHUTserie_isimip3: grid_df (LPJmL grid) is required.")
-  years  <- FYnc:LYnc
-  nyears <- length(years)
-  # smooth_window (years, odd, default 1): widens ONLY the temperature averaging
-  # used for the heat-unit sum, centred on each period, clamped to [FYnc, LYnc].
-  # With 1 (default) the PHU matches the growing period of that period exactly (the
-  # original behaviour); larger values damp single-year weather noise in the PHU of
-  # the annual product without changing the (already smooth) sowing/harvest dates.
-  half <- (as.integer(smooth_window) - 1L) %/% 2L
-
-  cr <- which(crop_ls[["ggcmi"]] == cro)
-  ir <- which(irri_ls[["ggcmi"]] == irri)
-
-  # Read the DRS crop-calendar file directly if its path is supplied (annual
-  # pipeline), otherwise reconstruct the legacy intermediate name under ncdir.
-  ncfname <- if (!is.null(ncfile)) ncfile else paste0(ncdir,
-                    crop_ls[["ggcmi"]][cr], "_", irri_ls[["ggcmi"]][ir],
-                    "_", gcm, "_", scen, "_", FYnc, "-", LYnc,
-                    "_ggcmi_ph3_rule_based_crop_calendar.nc4")
-  cat("\nreading:", ncfname)
-
+  years      <- FYnc:LYnc
+  nyears     <- length(years)
+  NCELLS     <- nrow(grid_df)
+  gcm_lc     <- tolower(gcm)
+  irr_tok    <- function(ir) if (ir == "ir") "firr" else "noirr"
+  ncpath     <- function(cro, ir) paste0(cal_dir, "ggcmi-crop-calendar_", gcm_lc, "_", soc_file,
+                                         "_", cro, "-", irr_tok(ir), "_annual_", FYnc, "_", LYnc, ".nc")
 
   # ------------------------------------------------------#
-  # Get Crop Parameters ----
+  # Crop parameters (once) + per crop x irrigation job table ----
   if (is.null(crop_par_file)) {
     crop_par_file <- system.file("extdata", "lpjml_crop_parameters_ggcmi_ph3.csv",
                                 package = "cropCalendars", mustWork = TRUE)
   }
-  croppar    <- subset(read.csv(crop_par_file, header = T, stringsAsFactors = F),
-                       crop == cro)
+  allpar <- read.csv(crop_par_file, header = TRUE, stringsAsFactors = FALSE)
 
-  basetemp      <- croppar$basetemp
-  max.vern.days <- croppar$max.vern.days
-  tv1           <- croppar$vern.temp.min
-  tv2           <- croppar$vern.temp.opt.min
-  tv3           <- croppar$vern.temp.opt.max
-  tv4           <- croppar$vern.temp.max
-
-  is_vernal_all  <- crop_ls[["vernal"]][cr] == "yes_all"
-  is_vernal_cond <- crop_ls[["vernal"]][cr] == "yes"
-
-  NCELLS <- nrow(grid_df)
+  jobs <- list()
+  for (cro in cros) for (ir in irris) {
+    cr <- which(crop_ls[["ggcmi"]] == cro)
+    cp <- allpar[allpar$crop == cro, ]
+    jobs[[length(jobs) + 1L]] <- list(
+      cro = cro, ir = ir, cr = cr,
+      basetemp = cp$basetemp, max.vern.days = cp$max.vern.days,
+      tv1 = cp$vern.temp.min, tv2 = cp$vern.temp.opt.min,
+      tv3 = cp$vern.temp.opt.max, tv4 = cp$vern.temp.max,
+      is_vernal_all  = crop_ls[["vernal"]][cr] == "yes_all",
+      is_vernal_cond = crop_ls[["vernal"]][cr] == "yes",
+      ncfile = ncpath(cro, ir))
+  }
+  njob <- length(jobs)
+  cat(sprintf("\nPHU (decadal): %s %s | %d crop x irrigation | years %d-%d\n",
+              gcm, scen, njob, FYnc, LYnc))
 
   # ------------------------------------------------------#
-  # Pre-compute 720x360 <-> NCELLS index mapping (once) ----
-  nc_tmp  <- nc_open(ncfname)
-  lons    <- ncvar_get(nc_tmp, "lon")
-  lats    <- ncvar_get(nc_tmp, "lat")
-  pmask   <- !is.na(ncvar_get(nc_tmp, "planting_day", start = c(1, 1, 1),
-                              count = c(720, 360, 1)))   # product land mask
+  # 720x360 <-> NCELLS index mapping (once; all crops share the product grid) ----
+  nc_tmp <- nc_open(jobs[[1]]$ncfile)
+  lons   <- ncvar_get(nc_tmp, "lon")
+  lats   <- ncvar_get(nc_tmp, "lat")
+  pmask  <- !is.na(ncvar_get(nc_tmp, "planting_day", start = c(1, 1, 1), count = c(720, 360, 1)))
   nc_close(nc_tmp)
-
-  # Flat index into [lon x lat] = 720 x 360 array stored column-major in R:
-  # matrix(sdate, nrow=720*360) row = (ilat-1)*720 + ilon
   lin_idx <- (match(grid_df$lat, lats) - 1L) * 720L + match(grid_df$lon, lons)
-
-  # Reconcile the LPJmL vs GGCMI grid mismatch (a 1-cell sub-antarctic-island
-  # artefact: GGCMI has 178.75,-49.25 while LPJmL has 178.75,-49.75). Any LPJmL cell
-  # that lands on a cell absent from the product grid is reassigned the nearest
-  # product land cell -- here its adjacent twin -- so it inherits that calendar.
+  # Reconcile the LPJmL vs GGCMI grid mismatch (a 1-cell sub-antarctic-island artefact):
+  # any LPJmL cell off the product grid inherits the nearest product land cell's calendar.
   off <- which(!pmask[lin_idx])
   if (length(off) > 0) {
-    land     <- which(as.vector(pmask))               # flat (column-major) land indices
+    land     <- which(as.vector(pmask))
     land_lon <- lons[((land - 1L) %% 720L) + 1L]
     land_lat <- lats[((land - 1L) %/% 720L) + 1L]
     for (i in off) {
-      d <- (land_lon - grid_df$lon[i])^2 + (land_lat - grid_df$lat[i])^2
-      lin_idx[i] <- land[which.min(d)]
+      dd <- (land_lon - grid_df$lon[i])^2 + (land_lat - grid_df$lat[i])^2
+      lin_idx[i] <- land[which.min(dd)]
     }
-    cat("\nRemapped", length(off), "LPJmL cell(s) off the product grid to nearest land cell")
+    cat("Remapped", length(off), "LPJmL cell(s) off the product grid to nearest land cell\n")
   }
 
   # ------------------------------------------------------#
-  # Output arrays ----
-  phu.annual <- array(NA, c(720L, 360L))
-  phu.cube   <- array(NA, c(720L, 360L, nyears))
+  # Decade grouping (MUST match stage 02: decades end in years divisible by 10) ----
+  decade_id <- pmax(0L, (years - 1851L) %/% 10L)
+  dec_list  <- unique(decade_id)
+  ndec      <- length(dec_list)
+  dec_cols  <- lapply(dec_list, function(d) which(decade_id == d))
 
-  # ------------------------------------------------------#
-  # Loop through time periods ----
-  for (yy in seq_len(length(SYs))) {
-
-    cat("\n--- Doing yy", yy, "---")
-
-    # --------------------------------------------------#
-    # Climate: accumulate year-by-year to cap peak RAM ----
-    # Temperature window = the period, widened by `half` years each side for
-    # smoothing (clamped to the product range). half = 0 -> exactly the period.
-    w_lo <- max(FYnc, SYs[yy] - half); w_hi <- min(LYnc, EYs[yy] + half)
-    tas_sum <- matrix(0.0, NCELLS, 365L)
-    for (yr in w_lo:w_hi) {
-      tas_yr  <- get.isimip.tas(gcm, scen, yr, yr, ncells = NCELLS)
-      tas_sum <- tas_sum + tas_yr[, , 1L]
-      rm(tas_yr)
+  # 2011-2020 special-casing: stage 02 makes the decadal-representative DATES for this decade
+  # identical across all ESM scenarios by splicing historical 2011-2014 + ssp245 2015-2020. To
+  # keep the PHU consistent with those identical dates, the decade-16 temperature is taken from
+  # the SAME spliced near-term climate for every ESM scenario (incl. historical) rather than
+  # each scenario's own 2011-2020 years. Fallbacks: ssp245 .clm missing -> historical 2011-2014;
+  # historical also missing -> the product's own years. Observational products (obsclim/spinclim/
+  # counterclim) keep their own years (no scenario splice).
+  g16     <- (2011L - 1851L) %/% 10L
+  obs_scn <- scen %in% isimip3a_scenarios
+  has_clm <- function(sc, fy, ly) file.exists(paste.isimip3b.clm.fn(isimip3b.path, gcm, sc, "tas", fy, ly))
+  decade_tas_src <- function(d, yrs_present) {
+    if (d == g16 && !obs_scn) {
+      if (has_clm("historical", 1850L, 2014L) && has_clm("ssp245", 2015L, 2100L))
+        return(rbind(data.frame(sc = "historical", yr = 2011:2014, stringsAsFactors = FALSE),
+                     data.frame(sc = "ssp245",     yr = 2015:2020, stringsAsFactors = FALSE)))
+      if (has_clm("historical", 1850L, 2014L))
+        return(data.frame(sc = "historical", yr = 2011:2014, stringsAsFactors = FALSE))
     }
-    tas_mean_day <- tas_sum / length(w_lo:w_hi)
-    rm(tas_sum)
+    data.frame(sc = scen, yr = yrs_present, stringsAsFactors = FALSE)
+  }
 
-    # --------------------------------------------------#
-    # Sdate / Hdate: vectorized extraction via flat index ----
-    nc    <- nc_open(ncfname)
-    sy    <- which(years == SYs[yy])
-    nyp   <- length(SYs[yy]:EYs[yy])
-    sdate <- ncvar_get(nc, "planting_day", start = c(1, 1, sy), count = c(720, 360, nyp))
-    hdate <- ncvar_get(nc, "maturity_day", start = c(1, 1, sy), count = c(720, 360, nyp))
-    nc_close(nc)
-
-    sdate_cells <- matrix(sdate, nrow = 720L * 360L)[lin_idx, , drop = FALSE]
-    hdate_cells <- matrix(hdate, nrow = 720L * 360L)[lin_idx, , drop = FALSE]
-    sdate_avg   <- as.integer(round(rowMeans(sdate_cells, na.rm = TRUE)))
-    hdate_avg   <- as.integer(round(rowMeans(hdate_cells, na.rm = TRUE)))
-    sdate_avg[is.na(sdate_avg)] <- 1L   # ri2 fill: 1-day growing period
-    hdate_avg[is.na(hdate_avg)] <- 2L
-    rm(sdate, hdate, sdate_cells, hdate_cells)
-
-    # --------------------------------------------------#
-    # Monthly temps (NCELLS x 12) ----
-    mtemp_mat <- .monthlyFromDaily(tas_mean_day, "mean")
-
-    # --------------------------------------------------#
-    # PHU computation (vectorized across all cells) ----
-
-    if (is_vernal_all) {
-      # wwh: every cell uses vernal-thermal model
-      vd_vec  <- .calc_vd_vec(mtemp_mat, max.vern.days, tv2 = tv2, tv3 = tv3)
-      vrf_mat <- .build_vrf_mat(sdate_avg, hdate_avg, tas_mean_day, vd_vec,
-                                tv1 = tv1, tv2 = tv2, tv3 = tv3, tv4 = tv4)
-      phu_vec <- .calc_phu_vernal_vec(sdate_avg, hdate_avg, tas_mean_day, vrf_mat, basetemp)
-
-    } else if (is_vernal_cond) {
-      # rap: vernal-thermal only for winter-type cells
-      tcm_vec   <- apply(mtemp_mat, 1L, min)
-      wcrop_vec <- .wintercrop_vec(sdate_avg, hdate_avg, tcm_vec, grid_df$lat)
-
-      vd_vec     <- .calc_vd_vec(mtemp_mat, max.vern.days, tv2 = tv2, tv3 = tv3)
-      vd_for_vrf <- vd_vec * wcrop_vec   # zero out spring-type cells
-      vrf_mat    <- .build_vrf_mat(sdate_avg, hdate_avg, tas_mean_day, vd_for_vrf,
-                                   tv1 = tv1, tv2 = tv2, tv3 = tv3, tv4 = tv4)
-
-      phu_thermal <- .calc_phu_thermal_vec(sdate_avg, hdate_avg, tas_mean_day, basetemp)
-      phu_vernal  <- .calc_phu_vernal_vec( sdate_avg, hdate_avg, tas_mean_day, vrf_mat, basetemp)
-      phu_vec     <- ifelse(wcrop_vec == 1L, phu_vernal, phu_thermal)
-
+  # Per-job PHU over a fixed window from one year's daily temperature (thermal / vernal model).
+  phu_one <- function(job, sda, hda, tas_day, mtemp_mat) {
+    bt <- job$basetemp
+    if (job$is_vernal_all) {
+      vd  <- .calc_vd_vec(mtemp_mat, job$max.vern.days, tv2 = job$tv2, tv3 = job$tv3)
+      vrf <- .build_vrf_mat(sda, hda, tas_day, vd, tv1 = job$tv1, tv2 = job$tv2, tv3 = job$tv3, tv4 = job$tv4)
+      .calc_phu_vernal_vec(sda, hda, tas_day, vrf, bt)
+    } else if (job$is_vernal_cond) {
+      tcm <- apply(mtemp_mat, 1L, min)
+      wc  <- .wintercrop_vec(sda, hda, tcm, grid_df$lat)
+      vd  <- .calc_vd_vec(mtemp_mat, job$max.vern.days, tv2 = job$tv2, tv3 = job$tv3) * wc
+      vrf <- .build_vrf_mat(sda, hda, tas_day, vd, tv1 = job$tv1, tv2 = job$tv2, tv3 = job$tv3, tv4 = job$tv4)
+      pt  <- .calc_phu_thermal_vec(sda, hda, tas_day, bt)
+      pv  <- .calc_phu_vernal_vec(sda, hda, tas_day, vrf, bt)
+      ifelse(wc == 1L, pv, pt)
     } else {
-      # All other crops: pure thermal model
-      phu_vec <- .calc_phu_thermal_vec(sdate_avg, hdate_avg, tas_mean_day, basetemp)
+      .calc_phu_thermal_vec(sda, hda, tas_day, bt)
+    }
+  }
+
+  # ------------------------------------------------------#
+  # Loop decades; within each, read each year's temperature ONCE and compute every crop ----
+  phu_dec <- lapply(seq_len(njob), function(.) matrix(NA_real_, NCELLS, ndec))   # decadal PHU per cell
+
+  for (di in seq_along(dec_list)) {
+    d <- dec_list[di]; in_dec <- dec_cols[[di]]; yrs_d <- years[in_dec]
+    cat(sprintf("--- decade %d (%d-%d, %d yr)", d, min(yrs_d), max(yrs_d), length(yrs_d)))
+
+    # Representative window per job (crop x irrigation), constant within the decade.
+    sda_l <- vector("list", njob); hda_l <- vector("list", njob)
+    for (jj in seq_len(njob)) {
+      nc    <- nc_open(jobs[[jj]]$ncfile)
+      sdate <- ncvar_get(nc, "planting_day-median", start = c(1, 1, in_dec[1]), count = c(720, 360, 1))
+      hdate <- ncvar_get(nc, "maturity_day-median", start = c(1, 1, in_dec[1]), count = c(720, 360, 1))
+      nc_close(nc)
+      sa <- as.integer(round(matrix(sdate, nrow = 720L * 360L)[lin_idx]))
+      ha <- as.integer(round(matrix(hdate, nrow = 720L * 360L)[lin_idx]))
+      # No-crop / missing-date cells (NA, or the stage-02 zero fill where GGCMI has no date)
+      # get a 1-day growing period (PHU ~ 0). A DOY of 0 must NOT reach the PHU kernels: the
+      # vernal .build_vrf_mat would index column 0 (length-zero -> crash) and the thermal
+      # path would read a spurious full-year sum.
+      bad <- is.na(sa) | is.na(ha) | sa < 1L | ha < 1L
+      sa[bad] <- 1L; ha[bad] <- 2L
+      sda_l[[jj]] <- sa; hda_l[[jj]] <- ha
     }
 
-    # --------------------------------------------------#
-    # Store result in 720x360 annual array via flat index ----
-    phu_flat          <- rep(NA_integer_, 720L * 360L)
-    phu_flat[lin_idx] <- phu_vec
-    phu.annual[]      <- phu_flat
+    tsrc <- decade_tas_src(d, yrs_d)
+    if (d == g16 && !obs_scn) cat(sprintf(" [2011-2020 splice: %d source-years %s..%s]",
+        nrow(tsrc), tsrc$sc[1L], tsrc$sc[nrow(tsrc)]))
 
-    # Repeat same phu for all years in this time slice
-    ys <- which(years %in% SYs[yy]:EYs[yy])
-    for (j in ys) phu.cube[, , j] <- phu.annual
-
+    pacc <- lapply(seq_len(njob), function(.) matrix(NA_real_, NCELLS, nrow(tsrc)))
+    for (k in seq_len(nrow(tsrc))) {
+      tas_day   <- get.isimip.tas(gcm, tsrc$sc[k], tsrc$yr[k], tsrc$yr[k], ncells = NCELLS)[, , 1L]
+      mtemp_mat <- .monthlyFromDaily(tas_day, "mean")
+      for (jj in seq_len(njob)) pacc[[jj]][, k] <- phu_one(jobs[[jj]], sda_l[[jj]], hda_l[[jj]], tas_day, mtemp_mat)
+      rm(tas_day, mtemp_mat)
+    }
+    for (jj in seq_len(njob)) phu_dec[[jj]][, di] <- apply(pacc[[jj]], 1L, median, na.rm = TRUE)
+    rm(pacc, sda_l, hda_l)
     cat(" done\n")
-
-  } # yy
-
+  } # decade
 
   # ------------------------------------------------------#
-  # Save intermediate result ----  (under the output dir, not a global work_dir)
-  tmp_dir <- paste0(ncdir, "tmp/")
-  if (!dir.exists(tmp_dir)) dir.create(tmp_dir, recursive = TRUE)
-
-  fn <- paste0(tmp_dir,
-               crop_ls[["ggcmi"]][cr], "_",
-               irri_ls[["ggcmi"]][ir], "_",
-               gcm, "_", scen, "_", FYnc, "-", LYnc,
-               "_ggcmi_ph3_rule_based_phu.Rdata")
-  save(phu.cube, file = fn)
-
-  # ------------------------------------------------------#
-  # Write Crop-specific Output File ----
-  # ------------------------------------------------------#
-
-  ncfname <- paste0(ncdir,
-                    crop_ls[["ggcmi"]][cr], "_", irri_ls[["ggcmi"]][ir],
-                    "_", gcm, "_", scen, "_", FYnc, "-", LYnc,
-                    "_ggcmi_ph3_rule_based_phu.nc4")
-  cat("\nwriting:", ncfname)
-
-  # Define dimensions
-  londim       <- ncdim_def("lon", "degrees_east",  lons)
-  latdim       <- ncdim_def("lat", "degrees_north", lats)
-  timdim       <- ncdim_def("time", "year",        years)
+  # Write one netCDF per crop x irrigation (broadcast the decadal PHU over its years) ----
+  londim <- ncdim_def("lon", "degrees_east",  lons)
+  latdim <- ncdim_def("lat", "degrees_north", lats)
+  timdim <- ncdim_def("time", "year", years)
   nc_dimension <- list(londim, latdim, timdim)
 
-  # Define variables
-  phu_def  <- ncvar_def(name = "phu", units = "degree days", dim = nc_dimension,
-                        longname = "Phenological Heat Unit Requirements",
-                        prec = "single", compression = 6)
-
-  # Create netCDF file and put arrays
-  ncout <- nc_create(ncfname, list(phu_def), verbose = F)
-
-  # Put variables
-  ncvar_put(ncout, phu_def, phu.cube)
-
-  # Put additional attributes into dimension and data variables
-  ncatt_put(ncout,  "lon", "axis", "X")
-  ncatt_put(ncout,  "lat", "axis", "Y")
-  ncatt_put(ncout, "time", "axis", "T")
-
-  ncatt_put(ncout, 0, "Crop",
-            paste0(crop_ls[["ggcmi"]][cr], "_", irri_ls[["ggcmi"]][ir]))
-  ncatt_put(ncout, 0, "Institution",
-            "Potsdam Institute for Climate Impact Research (PIK), Germany")
-  history <- paste("Created by Sara Minoli on", date(), sep = " ")
-  ncatt_put(ncout, 0, "history", history)
-
-  # Close the file, writing data to disk
-  nc_close(ncout)
-
-  unlink(fn)
-
+  for (jj in seq_len(njob)) {
+    job  <- jobs[[jj]]
+    cube <- array(NA, c(720L, 360L, nyears)); pa <- array(NA, c(720L, 360L))
+    for (di in seq_along(dec_list)) {
+      flat <- rep(NA_integer_, 720L * 360L)
+      flat[lin_idx] <- as.integer(round(phu_dec[[jj]][, di]))
+      pa[] <- flat
+      for (yy in dec_cols[[di]]) cube[, , yy] <- pa
+    }
+    ncfname <- paste0(ncdir, crop_ls[["ggcmi"]][job$cr], "_", job$ir, "_",
+                      gcm, "_", scen, "_", FYnc, "-", LYnc, "_ggcmi_ph3_rule_based_phu.nc4")
+    phu_def <- ncvar_def(name = "phu", units = "degree days", dim = nc_dimension,
+                         longname = "Phenological Heat Unit Requirements",
+                         prec = "single", compression = 6)
+    ncout <- nc_create(ncfname, list(phu_def), verbose = FALSE)
+    ncvar_put(ncout, phu_def, cube)
+    ncatt_put(ncout, "lon",  "axis", "X")
+    ncatt_put(ncout, "lat",  "axis", "Y")
+    ncatt_put(ncout, "time", "axis", "T")
+    ncatt_put(ncout, 0, "Crop", paste0(crop_ls[["ggcmi"]][job$cr], "_", job$ir))
+    ncatt_put(ncout, 0, "Institution", "Potsdam Institute for Climate Impact Research (PIK), Germany")
+    ncatt_put(ncout, 0, "history", paste("Created by Jens Heinke on", format(Sys.time(), "%Y-%m-%d")))
+    nc_close(ncout)
+    cat("wrote", basename(ncfname), "\n")
+  }
 }
 
 

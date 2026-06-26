@@ -36,22 +36,24 @@ if (cluster_job == TRUE) {
   options(echo = FALSE) # if you want see commands in output file
   args <- commandArgs(trailingOnly = TRUE)
 } else {
-  args <- c("GFDL-ESM4", "ssp585", "mai", "rf")
+  args <- c("GFDL-ESM4", "ssp585")
 }
 print(args)
 
 # ------------------------------------ #
-# Select variable, crop, model, year
+# One compact job per gcm x scenario: all crops x irrigations are processed in a single
+# call so each year's daily temperature is read once and reused across crops.
 gcm    <- args[1]
 scen   <- args[2]
-cro    <- args[3]
-irri   <- args[4]
+# CROPS env (ggcmi tokens, comma- or space-separated) restricts the crop set; default all.
+crops_env <- trimws(unlist(strsplit(Sys.getenv("CROPS", ""), "[, ]+")))
+crops_env <- crops_env[nzchar(crops_env)]
+cros  <- if (length(crops_env) > 0) crops_env else crop_ls[["ggcmi"]]
+irris <- c("rf", "ir")
 
-# DRS crop-calendar file to read (output of stage 02). ISIMIP3a observational scenarios
-# (obsclim/spinclim -> histsoc, counterclim -> countersoc; any forcing dataset) ->
-# ISIMIP3a; ESMs -> ISIMIP3b per gcm x soc. The directory + filename stem MUST mirror
-# stage 02 (02_assemble_annual_ncdf.R) exactly.
-irr_tok  <- if (irri == "ir") "firr" else "noirr"
+# DRS crop-calendar directory + soc token (output of stage 02). ISIMIP3a observational
+# scenarios (obsclim/spinclim -> histsoc, counterclim -> countersoc) -> ISIMIP3a; ESMs ->
+# ISIMIP3b per gcm x soc. MUST mirror stage 02 (02_assemble_annual_ncdf.R) exactly.
 if (scen %in% isimip3a_scenarios) {
   soc_file <- if (scen == "counterclim") "countersoc" else "histsoc"
   cal_dir  <- paste0(output_dir, "ISIMIP3a/InputData/socioeconomic/crop_calendar/", soc_file, "/")
@@ -60,52 +62,36 @@ if (scen %in% isimip3a_scenarios) {
   soc_file <- if (scen == "historical") "histsoc" else scen
   cal_dir  <- paste0(output_dir, "ISIMIP3b/InputData/socioeconomic/crop_calendar/", gcm, "/", soc_dir, "/")
 }
-cal_stem <- paste0("ggcmi-crop-calendar_", tolower(gcm), "_", soc_file, "_",
-                   cro, "-", irr_tok, "_annual_")
 
-# Derive the product year range from the file stage 02 actually wrote, instead of a
-# hardcoded per-scenario table: stage 02 names the file from the discovered emit_years
-# (min/max), so reading the range back from the file keeps the two stages on a single
-# source of truth (any new dataset / partial run / unlisted scenario just works).
-hits <- Sys.glob(paste0(cal_dir, cal_stem, "*.nc"))
+# Derive the product year range from any stage-02 file (all crops share it): stage 02
+# names the file from the discovered emit_years (min/max), so reading it back keeps the
+# two stages on a single source of truth.
+hits <- Sys.glob(paste0(cal_dir, "ggcmi-crop-calendar_", tolower(gcm), "_", soc_file, "_*_annual_*.nc"))
 if (length(hits) == 0)
-  stop("Stage-02 crop-calendar file not found (run stage 02 first): ",
-       cal_dir, cal_stem, "*.nc")
-ncfile <- hits[1]
-m <- regmatches(basename(ncfile),
-                regexec("_annual_([0-9]{4})_([0-9]{4})\\.nc$", basename(ncfile)))[[1]]
+  stop("Stage-02 crop-calendar files not found (run stage 02 first): ", cal_dir)
+m <- regmatches(basename(hits[1]),
+                regexec("_annual_([0-9]{4})_([0-9]{4})\\.nc$", basename(hits[1])))[[1]]
 if (length(m) != 3)
-  stop("Cannot parse the product year range from: ", basename(ncfile))
+  stop("Cannot parse the product year range from: ", basename(hits[1]))
 FYnc <- as.integer(m[2]); LYnc <- as.integer(m[3])
-
-# Annual product: one "period" per year, so the PHU matches each year's growing
-# period exactly. PHU_SMOOTH_WINDOW (default 1) optionally widens the temperature
-# averaging only.
-SYs <- FYnc:LYnc; EYs <- FYnc:LYnc
-smooth_window <- as.integer(Sys.getenv("PHU_SMOOTH_WINDOW", as.character(phu_smooth_window)))
-cat(sprintf("PHU: %s %s %s_%s | years %d-%d | smooth_window=%d\n",
-            gcm, scen, cro, irri, FYnc, LYnc, smooth_window))
 
 ncdir  <- paste0(output_dir, "crop_calendars/ncdf/", gcm, "/", scen, "/")  # PHU .nc4 output
 if (!dir.exists(ncdir)) dir.create(ncdir, recursive = TRUE)
 
 # ------------------------------------------------------#
-# Compute PHUs and Write ncdfs
+# Compute decadal PHUs and write one netCDF per crop x irrigation.
 
 generatePHUTserie_isimip3(
-    ncdir         = ncdir,
-    gcm           = gcm,
-    scen          = scen,
-    cro           = cro,
-    irri          = irri,
-    SYs           = SYs,
-    EYs           = EYs,
-    FYnc          = FYnc,
-    LYnc          = LYnc,
-    grid_df       = grid_df,
-    crop_par_file = NULL,
-    ncfile        = ncfile,
-    smooth_window = smooth_window
+    ncdir    = ncdir,
+    gcm      = gcm,
+    scen     = scen,
+    cros     = cros,
+    irris    = irris,
+    FYnc     = FYnc,
+    LYnc     = LYnc,
+    grid_df  = grid_df,
+    cal_dir  = cal_dir,
+    soc_file = soc_file
 )
 
 # ------------------------------------------------------#
