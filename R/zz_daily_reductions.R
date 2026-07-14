@@ -90,9 +90,8 @@
 # lowest/highest day jumps +-30 d between adjacent climatology years even though the centre
 # barely moves. That jitter fed the winter-wheat warm-regime sowing (coldest_doy - 75), the
 # spring up-crossing scan (from = coldest_doy), hd_temp_base (= warmest_day [+ rphase]) and the
-# cold-cell spring fallback (warmest_doy), and was the dominant maritime sowing-flicker source.
-# The centroid averages over the whole plateau, ~10x more stable (validated: spread ~55 d ->
-# ~5 d on UK/France cells), while remaining a pure PHASE estimator -- weights depend on the
+# cold-cell spring fallback (warmest_doy). The centroid averages over the whole plateau, ~10x more
+# stable, while remaining a pure PHASE estimator -- weights depend on the
 # SHAPE of the cycle, not its level, so it does not drift with warming. Weight each DOY by how
 # far it sits from the OPPOSITE extreme (cold: max(tx) - tx, 0 at the warmest day; warm:
 # tx - min(tx), 0 at the coldest); the circular-mean angle is atan2 of the weighted sin/cos
@@ -138,8 +137,8 @@
 # leading/"next month" side), so a positive value flags declining moisture across j --
 # on the daily grid, removing the residual whole-month quantization. The junction value
 # is assigned back to the DOY d = j - h that the two windows straddle (h = width %/% 2).
-# NB: the trend wet-end candidate (doy_wet2) this fed was RETIRED (see NEWS); this helper
-# is retained only for the diagnostic replay scripts under utils/ggcmi_ph3.
+# NB: the trend wet-end candidate (doy_wet2) this fed is no longer used by the rules; this
+# helper is retained only for the diagnostic replay scripts under utils/ggcmi_ph3.
 # NORMALISED to a per-30-day rate (x 30/lag): the two window centres are `lag = 2*h`
 # days apart, but the comparison threshold ppet_ratio_diff is calibrated as a
 # delta(P/PET) per 30 days (= the month-over-month mppet_diff), so the diff is rescaled

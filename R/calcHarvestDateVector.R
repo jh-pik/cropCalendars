@@ -146,12 +146,11 @@ calcHarvestDateVector <- function(croppar,
   } else {
     daily_ppet <- .monthlyToDoy365(monthly_ppet)
   }
-  # NB: the wet-season-end crossing EXISTENCE is deliberately NOT deadbanded. A
-  # one-directional nudge of ppet_ratio cannot keep a band-membership condition
-  # (min(daily_ppet) < ppet_ratio < max) sticky -- raising it to keep a found crossing
-  # instead eliminates the crossing whenever the wet peak sits just above ppet_ratio,
-  # forcing a found/not-found 2-cycle. Measured on unbiased cells this manufactured
-  # far MORE flicker than it removed, so the wet-end crossing is left raw.
+  # NB: the wet-season-end crossing EXISTENCE is deliberately NOT deadbanded by nudging ppet_ratio. A
+  # one-directional level nudge cannot keep a band-membership condition (min(daily_ppet) < ppet_ratio <
+  # max) sticky -- raising ppet_ratio to keep a found crossing instead eliminates it whenever the wet
+  # peak sits just above ppet_ratio, forcing a found/not-found 2-cycle. Existence is instead stabilised
+  # by the cross_min_area deficit-days Schmitt below (nudging the area, not the level).
 
   # Shortest cycle: crop lower biological limit
   hd_first <- sowing_date + min_growingseason
@@ -165,23 +164,20 @@ calcHarvestDateVector <- function(croppar,
   # End of wet season ----
   # Anchor for the harvest threshold-crossing scans (the wet-end P/PET crossings here and the
   # hot-day temperature crossings below). The Jan-1 default (from = 1L) returns the EARLIEST-DOY
-  # crossing, so a marginal year whose signal grazes the threshold mid-season registers a
-  # spurious early crossing that PRE-EMPTS the genuine one (e.g. Uruguay Rice: a DOY-48 P/PET dip
-  # masks the real DOY-333 wet-end). Anchoring the scan at sowing returns the first crossing AFTER
-  # sowing -- the physically meaningful one -- mirroring the warmest/coldest-day anchors already
-  # used for the sowing crossings. This is a general fix, always on (the legacy Jan-1 scan is a bug).
+  # crossing, so a marginal year whose signal grazes the threshold mid-season registers a spurious
+  # early crossing that PRE-EMPTS the genuine one. Anchoring the scan at sowing returns the first
+  # crossing AFTER sowing -- the physically meaningful one -- mirroring the warmest/coldest-day anchors
+  # already used for the sowing crossings. This is a general fix, always on (the Jan-1 scan is a bug).
   sow_anchor <- as.integer(sowing_date)
   # HYSTERETIC deficit-days budget for the wet-end LEVEL crossing (doy_wet1). cross_min_area is the
   # Schmitt pair c(lo, hi) (a scalar means lo == hi, no hysteresis): a previously-FOUND wet-end keeps
   # the lenient bound area_lo (stay found unless the dip's integrated deficit drops below it), a
   # previously-ABSENT one needs the strict bound area_hi to newly qualify. This damps the existence
-  # flicker when the dip's area grazes the budget year to year. Unlike a level-threshold nudge
-  # (harv_exist_eps, rejected -- raising ppet_ratio to keep a found crossing paradoxically erases it
-  # when the peak sits just above ppet_ratio), nudging the AREA is monotonic in dip depth/duration, so
-  # it cannot destroy the crossing it tries to keep. min_duration is retired here: min_area >= ~2
-  # already implies multi-day persistence (a 1-2 day dip cannot accumulate that deficit at realistic
-  # P/PET), so the day-count guard is redundant on the level crossing. (The hot-day temperature
-  # crossings have no area analogue and keep cross_min_duration.)
+  # flicker when the dip's area grazes the budget year to year. Nudging the AREA is monotonic in dip
+  # depth/duration, so -- unlike nudging the threshold LEVEL -- it cannot destroy the crossing it tries
+  # to keep. min_duration is not used here: min_area >= ~2 already implies multi-day persistence (a
+  # 1-2 day dip cannot accumulate that deficit at realistic P/PET). (The hot-day temperature crossings
+  # have no area analogue and keep cross_min_duration.)
   area_lo <- cross_min_area[1L]
   area_hi <- cross_min_area[length(cross_min_area)]
   min_area_eff <- if (isTRUE(prev_wetend_found)) area_lo else area_hi   # NA / FALSE -> strict (hi)
@@ -194,12 +190,9 @@ calcHarvestDateVector <- function(croppar,
     )[["doy_cross_down"]]
   # Wet-season-end estimate (P/PET level crossing doy_wet1); the crop escapes terminal water
   # stress at it, mapped to forward-from-sowing and clamped to [hd_first, hd_last] (see the
-  # wetseas_escape branch). The former trend estimate (doy_wet2, P/PET declining-moisture
-  # crossing) was RETIRED: it never decided existence -- it only pulled the escape earlier when
-  # doy_wet1 already existed -- but the noisier trend series made it the single largest remaining
-  # moisture-flicker source (A/B: -14.6% global flicker, -39% Spring_Wheat with it off) for only a
-  # 5.4% cell-year / median-23 d level shift into the stable hd_maxrp rotation cap. See NEWS.
-  # (cc_regime path may re-detect doy_wet1 at a deadbanded threshold first.)
+  # wetseas_escape branch). The escape uses this single level crossing only -- an earlier trend-based
+  # candidate (doy_wet2) that could pull the escape earlier was dropped as the noisier of the two
+  # series. (cc_regime path may re-detect doy_wet1 at a deadbanded threshold first.)
   # Escape harvest for a FOUND wet-end. Each wet-end is placed by its CIRCULAR forward distance from
   # sowing, fwd = (wet_end - sowing_date) %% 365 (days AFTER sowing), and the escape harvest is
   # sowing + fwd + rphase, clamped to [hd_first, hd_last] IN PLACE: the lower clamp sends a
@@ -214,16 +207,15 @@ calcHarvestDateVector <- function(croppar,
   }
   # WET-NEAR GATE (always on): are we in, or imminently entering, an active wet season? TRUE iff any
   # DOY in [sowing, sowing + w_eff] is at/above the threshold. The sowing date is temperature-set in
-  # TEMPPREC cells (cold-winter monsoon, e.g. NE China Maize) and the monsoon can open a week or two
-  # AFTER the thermal spring, so a strict at-sowing test reads "dry" and collapses a real season to
-  # hd_first; the window admits an imminent onset. Because the onset lag grazes the window year to
-  # year, the window is HYSTERETIC (Schmitt): previously-wet uses the generous bound w_hi, previously-
-  # dry the strict bound w_lo; an onset lag in (w_lo, w_hi] keeps last year's verdict. Bounds via
-  # options (default 10/20). Resolved wet_near is carried forward (harv_hi 12x bit). The gate also
-  # SELF-HEALS a wet-end (or onset) oscillating around sowing: an end just AFTER sowing -> wet at
-  # sowing -> wet_near -> tier 1 -> tiny fwd -> hd_first; an end just BEFORE sowing -> dry, no re-onset
-  # in the window -> !wet_near -> hd_first. Both land on hd_first, so the sowing/harvest mismatch can't
-  # flip hd_last<->hd_first.
+  # TEMPPREC cells (cold-winter monsoon) and the monsoon can open a week or two AFTER the thermal
+  # spring, so a strict at-sowing test reads "dry" and collapses a real season to hd_first; the window
+  # admits an imminent onset. Because the onset lag grazes the window year to year, the window is
+  # HYSTERETIC (Schmitt): previously-wet uses the generous bound w_hi, previously-dry the strict bound
+  # w_lo; an onset lag in (w_lo, w_hi] keeps last year's verdict. Bounds via options (default 10/20).
+  # Resolved wet_near is carried forward (harv_hi 12x bit). The gate also SELF-HEALS a wet-end (or
+  # onset) oscillating around sowing: an end just AFTER sowing -> wet at sowing -> wet_near -> tier 1 ->
+  # tiny fwd -> hd_first; an end just BEFORE sowing -> dry, no re-onset in the window -> !wet_near ->
+  # hd_first. Both land on hd_first, so the sowing/harvest mismatch can't flip hd_last<->hd_first.
   w_lo <- as.integer(getOption("cc_wet_window_lo", 10L))
   w_hi <- as.integer(getOption("cc_wet_window_hi", 20L))
   # The wet-near gate's window WIDTH (w_lo/w_hi) deadbands the onset TIMING -- a wet day grazing the edge
@@ -237,10 +229,10 @@ calcHarvestDateVector <- function(croppar,
   # the strict hi to become wet. wet_near_min_area = 0 (default) -> the original single-day max test.
   wn_area_eff <- if (isTRUE(prev_wet_near)) wet_near_min_area[1L]
                  else                       wet_near_min_area[length(wet_near_min_area)]   # NA/FALSE -> strict hi
-  # The window WIDTH (20/40) and the area budget are COMPLEMENTARY, not redundant: tested replacing the
-  # width hysteresis with a fixed wide window + area-only Schmitt -- it REGRESSED the monsoon onset-timing
-  # case (NE-China Maize 32 -> 60..121) the width hysteresis exists for, while being neutral on Rice. So
-  # both axes are kept: width deadbands the onset TIMING, the area budget the wet-season MAGNITUDE.
+  # The window WIDTH and the area budget are COMPLEMENTARY, not redundant: the width hysteresis
+  # deadbands the onset TIMING (a wet day grazing the edge of the window, as in a lagged monsoon
+  # onset), while the area budget deadbands the wet-season MAGNITUDE (a thin P/PET touch vs a real
+  # season). Both axes are kept.
   wetnear_test <- function(threshold) {
     w_eff <- if (isTRUE(prev_wet_near)) w_hi else w_lo                         # NA / FALSE -> strict
     widx  <- ((as.integer(sowing_date) - 1L + 0:w_eff) %% ndays_year) + 1L
@@ -268,10 +260,9 @@ calcHarvestDateVector <- function(croppar,
       if (doy_wet1 == -9999) hd_last else wetseas_escape(doy_wet1)
     } else if (ppet_min < ppet_ratio) {
       # FULL PARALLEL with the ppet_ratio doy_wet1 crossing: the floor dry-down gets the SAME hysteretic
-      # cross_min_area Schmitt (prev_floor_found -> lenient lo, else strict hi), not the old scalar
-      # area_lo. A grazing floor dry-down (area near the budget) then cannot flip found<->absent year to
-      # year -- which was toggling hd_last<->hd_first (-> first<->topt selection) in TIER-2 Rice cells
-      # (Pampas/US plains the area gate demotes into this branch).
+      # cross_min_area Schmitt (prev_floor_found -> lenient lo, else strict hi). A grazing floor dry-down
+      # (area near the budget) then cannot flip found<->absent year to year -- which would toggle
+      # hd_last<->hd_first (-> first<->topt selection) in tier-2 Rice cells.
       floor_end <- calcDoyCrossThreshold(daily_ppet, ppet_min,
                      min_duration = 1L, from = sow_anchor,
                      min_area = floor_area_eff)[["doy_cross_down"]]

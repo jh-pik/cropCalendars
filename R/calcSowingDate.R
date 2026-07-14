@@ -124,7 +124,7 @@ calcSowingDate <- function(croppar,
 
   # Winter-regime classification (warm / mild / cold) with optional hysteresis on EACH boundary. The
   # two thresholds each pick a different autumn-sowing anchor, so when coldest_t grazes either boundary
-  # the sowing date jumps between adjacent years -- the dominant winter-wheat sowing-flicker mode:
+  # the sowing date can jump between adjacent years:
   #   * warm boundary (coldest_t > basetemp.low): warm -> coldest_doy-75, mild -> temp_fall down-crossing
   #   * cold boundary (coldest_t < -10):          cold -> -9999 (spring fallback), mild -> down-crossing
   # Each boundary has its OWN deadband -- winter_margin for the warm boundary, winter_cold_margin for the
@@ -179,47 +179,33 @@ calcSowingDate <- function(croppar,
     firstwinterdoy == -9999, DEFAULT_DOY, firstwinterdoy
     )
 
-  # First day of spring: the first upward temp_spring crossing AFTER the coldest day.
-  # Anchoring the scan to the winter minimum (coldest_doy) skips an autumn temperature
-  # plateau grazing temp_spring -- which sits before the coldest day -- that otherwise
-  # produces a spurious ~half-year-early sowing in mild-winter cells (e.g. Uruguay /
-  # S. Brazil), without adding any temporal lag.
-  #
-  # First spring up-crossing of temp_spring, scanned forward from the centroid coldest_doy (the
-  # phase-anchored winter trough). No depth gate: when the trough never dips below temp_spring there
-  # is simply no up-crossing and calcDoyCrossThreshold returns -9999, which the mean-based fallback
-  # below resolves to coldest_doy -- the same place a gated-off cell landed, so the former depth gate
-  # (coldest_t < temp_spring - spring_offset) was a no-op once the fallback became mean-anchored, and
-  # was removed. The centroid coldest_doy (not argmin) is what de-flickers the maritime cells now.
+  # First day of spring: the first upward temp_spring crossing AFTER the coldest day, scanned forward
+  # from the centroid coldest_doy (the phase-anchored winter trough). Anchoring the scan to the winter
+  # minimum skips an autumn temperature plateau grazing temp_spring -- which sits before the coldest
+  # day -- that would otherwise register a spurious ~half-year-early sowing in mild-winter cells,
+  # without adding any temporal lag. No depth gate is needed: when the trough never dips below
+  # temp_spring there is simply no up-crossing and calcDoyCrossThreshold returns -9999, which the
+  # mean-based fallback below resolves to coldest_doy.
   firstspringdoy <- calcDoyCrossThreshold(
     daily_temp_x, temp_spring, min_duration = cross_min_duration,
     from = coldest_doy)[["doy_cross_up"]]
   firstspringmonth <- ifelse(
     firstspringdoy == -9999, DEFAULT_MONTH, doy2month(firstspringdoy)
     )
-  # When temp_spring is never crossed (gated off above, or no registered crossing), the spring sowing DOY
-  # falls back to the day the smoothed daily temperature comes CLOSEST to the threshold, rather than the
-  # fixed DEFAULT_DOY (Jan-1 / Jul-1). A single discriminant -- the ANNUAL-MEAN smoothed temperature
-  # relative to temp_spring -- picks the closest-approach day (replacing the former max/min three-case
-  # logic, which mis-routed gated-off shallow-maritime cells to the warmest day):
+  # When temp_spring is never crossed, the spring sowing DOY falls back to the day the smoothed daily
+  # temperature comes CLOSEST to the threshold, rather than the fixed DEFAULT_DOY (Jan-1 / Jul-1), so
+  # the default<->found transition is continuous (the placeholder sits where the real crossing emerges)
+  # instead of a ~half-year jump. A single discriminant -- the ANNUAL-MEAN smoothed temperature
+  # relative to temp_spring -- picks the closest-approach day:
   #   - MEAN BELOW temp_spring (cold cell): the series only reaches up toward the threshold at its summer
-  #     peak; the closest approach -- and where the genuine up-crossing collapses in a marginally warmer
-  #     year -- is the WARMEST day. Covers the too-cold arctic/boreal case and the spans-but-brief-warm-
-  #     spell boreal case (mean still below). Anchoring at DEFAULT_DOY (Jan-1) instead flickered
-  #     1<->warmest_doy across the margin -- a large STYP sowing-flicker source.
-  #   - MEAN ABOVE temp_spring (warm cell): the series only dips toward the threshold at its winter trough;
-  #     the closest approach -- and where the up-crossing sits, right after the brief cold dip -- is the
-  #     COLDEST day (centroid coldest_doy, ~Jan). Covers the too-warm subtropical case AND the gated-off
-  #     shallow-maritime case (NW Europe Spring_Wheat), whose real sowing is the winter trough, NOT
-  #     midsummer. The old warmest_doy anchor here was ~half a year off and drove the Spring_Wheat/STYP
-  #     half-year fallback flip (and the subtropical hd_first<->hd_last harvest pair flicker).
-  # Anchoring each case at its closest-approach day makes the default<->found sowing transition continuous
-  # (the placeholder sits where the real crossing emerges) instead of a ~half-year jump that flickers year
-  # to year and propagates into the sowing-anchored hd_first harvest date. sowing_month stays
-  # DEFAULT_MONTH (set just above), so the cell is still flagged "no real season" (dflag) and the harvest
-  # too-cold guard still fires -- only the placeholder DOY moves.
-  # Scalar if/else (not ifelse): the mean is the same smoothed series the crossing scan reads, and is
-  # only needed on the no-crossing fallback -- ifelse would evaluate it every cell (both arms eager).
+  #     peak, so the closest approach (and where a marginally warmer year first crosses) is the WARMEST day.
+  #   - MEAN ABOVE temp_spring (warm cell): the series only dips toward the threshold at its winter trough,
+  #     so the closest approach is the COLDEST day (centroid coldest_doy, ~Jan) -- e.g. a warm subtropical
+  #     cell, or a shallow-maritime cell whose real sowing is the winter trough, not midsummer.
+  # sowing_month stays DEFAULT_MONTH (set just above), so the cell is still flagged "no real season"
+  # (dflag) and the harvest too-cold guard still fires -- only the placeholder DOY moves.
+  # Scalar if/else (not ifelse): the mean is only needed on the no-crossing fallback -- ifelse would
+  # evaluate both arms for every cell.
   firstspringdoy <- if (firstspringdoy != -9999) firstspringdoy            # genuine up-crossing
                     else if (mean(daily_temp_x) > temp_spring) coldest_doy # warm cell -> winter trough (~Jan)
                     else warmest_doy                                       # cold cell -> summer peak
@@ -255,9 +241,9 @@ calcSowingDate <- function(croppar,
 
     # Winter wheat dispatches on seasonality like the STYP crops in cells with NO thermal winter to
     # anchor to: the thermal autumn rule (coldest_doy-75 / temp_fall down-crossing) is meaningless there
-    # and was the dominant winter-wheat sowing-flicker source (coldest_doy = argmin of a near-flat
-    # temperature curve, swinging across the year). Only PRECTEMP/TEMP/TEMPPREC -- which have a genuine
-    # thermal winter, the vernalization signal winter wheat is defined by -- keep the thermal logic.
+    # (coldest_doy is the argmin of a near-flat temperature curve, swinging across the year). Only
+    # PRECTEMP/TEMP/TEMPPREC -- which have a genuine thermal winter, the vernalization signal winter
+    # wheat is defined by -- keep the thermal logic.
     if (seasonality == "NO_SEASONALITY") {
 
       # No thermal winter and no wet season: pin to the stable default, as every STYP crop does. Non-
@@ -287,12 +273,11 @@ calcSowingDate <- function(croppar,
 
       # firstwinterdoy is a REAL autumn date (warm regime: coldest_doy-75; mild regime: temp_fall
       # down-crossing) but falls on/before the earliest allowed sowing date -> CLAMP to earliest_sdate
-      # and winter-sow. The former `coldest_t > temp_fall` guard restricted this clamp to warm cells, so a
-      # MILD vernalizing cell whose autumn temp_fall crossing grazed earliest_sdate (wobbling +-1 day) was
-      # kicked to the spring fallback instead -- a half-year winter<->spring flip on a one-day crossing
-      # wobble, the dominant E-Europe/Ukraine WW sowing-flicker source. Cold cells (coldest_t < cold_thr)
-      # already set firstwinterdoy = -9999 above, so firstwintermonth == DEFAULT_MONTH routes them to the
-      # spring fallback below; this clamp only catches viable (warm/mild) winter cells.
+      # and winter-sow. The clamp applies to any viable (warm or mild) winter cell: without it, a mild
+      # vernalizing cell whose autumn temp_fall crossing grazes earliest_sdate would be kicked to the
+      # spring fallback on a one-day crossing wobble -- a half-year winter<->spring flip. Cold cells
+      # (coldest_t < cold_thr) already set firstwinterdoy = -9999 above, so firstwintermonth ==
+      # DEFAULT_MONTH routes them to the spring fallback below.
       sowing_month  <- earliest_smonth
       sowing_doy    <- earliest_sdate
       sowing_season <- "winter"
@@ -300,9 +285,8 @@ calcSowingDate <- function(croppar,
     } else {
 
       # No viable winter sowing found -> spring fallback, flagged "no real winter season" (dflag 0).
-      # sowing_month is forced to DEFAULT_MONTH here (was previously done by a blanket post-hoc override
-      # keyed on WTYP & season=="spring"; that override is gone because it would also clobber the PREC
-      # wet-season month above).
+      # sowing_month is set to DEFAULT_MONTH here explicitly (a blanket WTYP override would also clobber
+      # the PREC wet-season month set above).
       sowing_month  <- DEFAULT_MONTH
       sowing_doy    <- firstspringdoy
       sowing_season <- "spring"
@@ -335,16 +319,14 @@ calcSowingDate <- function(croppar,
 
   # Defensive: convert any still-unresolved crossing (-9999) to the canonical default DOY. The
   # temperature spring fallback above already remaps the no-crossing case to the warmest day, so this
-  # no longer fires for those cells (keying it on sowing_month == DEFAULT_MONTH, as before, would
-  # clobber the warmest-day anchor back to Jan-1). It now only catches genuinely unresolved DOYs from
-  # reduced / monthly-only call paths; NO_SEASONALITY already sets sowing_doy = DEFAULT_DOY explicitly.
+  # only catches genuinely unresolved DOYs from reduced / monthly-only call paths (it is keyed on the
+  # DOY, not sowing_month, so it does not clobber the warmest-day anchor); NO_SEASONALITY already sets
+  # sowing_doy = DEFAULT_DOY explicitly.
   sowing_doy    <- ifelse(
     sowing_doy == -9999, DEFAULT_DOY, sowing_doy
     )
-  # NB: the former blanket "WTYP & sowing_season=='spring' -> sowing_month=DEFAULT_MONTH" override is
-  # gone. Each WTYP spring-season branch now sets sowing_month explicitly: the thermal spring fallback
-  # and NO_SEASONALITY set DEFAULT_MONTH (dflag 0), while PREC keeps doy2month(wet_doy) (dflag 1) -- the
-  # blanket override would have wrongly zeroed the PREC wet-season month.
+  # Each WTYP spring-season branch sets sowing_month explicitly: the thermal spring fallback and
+  # NO_SEASONALITY set DEFAULT_MONTH (dflag 0), while PREC keeps doy2month(wet_doy) (dflag 1).
 
   sd_vector <- list("sowing_month"  = sowing_month,
                     "sowing_doy"    = sowing_doy,

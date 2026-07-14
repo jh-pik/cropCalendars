@@ -36,10 +36,9 @@ calcHarvestDate <- function(croppar,
 
   ndays_year <- 365
 
-  # NB: the "too cold to grow" guards below key on sowing_month==0 alone (the consistency fix), so the
-  # warmest-window temperature (formerly warmest_t = .warmestWindowMean(daily_temp) vs temp_spring/
-  # temp_fall) is no longer computed here; the monthly_temp / daily_temp / smooth_window arguments that
-  # fed it have been dropped from the signature.
+  # NB: the "too cold to grow" guards below key on sowing_month==0 alone, consistent with the sowing
+  # decision, so no warmest-window temperature is computed here (hence no monthly_temp / daily_temp /
+  # smooth_window arguments in the signature).
 
   # Extract individual individual values from hd_vector
   for (i in names(hd_vector)) {
@@ -115,14 +114,11 @@ calcHarvestDate <- function(croppar,
       } else if (harvest_rule==6) {
         if (sowing_month==0) {
           # DEFAULT sowing = calcSowingDate found no real season (no sustained temp_fall/temp_spring
-          # crossing) -> too cold/short to grow, harvest as early as possible. This used to re-test
-          # `warmest_t < temp_fall` on top of `sowing_month==0`, but that is a SECOND, less-robust test
-          # of the SAME threshold the sowing decision already made: sowing uses a sustained daily
-          # crossing (min_duration), this used the bare warmest-window MEAN with no persistence or
-          # deadband. In the cold-marginal band the two disagreed (sowing pinned default while the mean
-          # grazed the threshold), flipping the harvest hd_first<->hd_last every sub-degree wobble at
-          # otherwise-stable sowing. Keying the guard on the sowing verdict alone makes the two
-          # consistent and removes that flicker by construction. See NEWS.
+          # crossing) -> too cold/short to grow, harvest as early as possible. The guard keys on the
+          # sowing verdict (sowing_month==0) alone rather than re-testing the warmest-window temperature
+          # against temp_fall: the sowing decision already made that call, with a sustained daily
+          # crossing, so re-testing it here with a bare window mean could disagree in the cold-marginal
+          # band and flip the harvest hd_first<->hd_last at otherwise-stable sowing.
           hd_rf <- hd_first
           hd_ir <- hd_first
         } else {
@@ -149,11 +145,10 @@ calcHarvestDate <- function(croppar,
         hd_ir <- hd_first
       } else if (harvest_rule==6){
         if (sowing_month==0) {
-          # DEFAULT sowing -> no real season found -> harvest as early as possible. The former
-          # `&& warmest_t < temp_spring` re-test was dropped: it duplicated the sowing decision's own
-          # temp_spring test but with the bare warmest-window MEAN (no persistence/deadband), so it
-          # flickered hd_first<->hd_last at stable default sowing. Keyed on sowing_month alone now (the
-          # consistency fix; see the winter-type branch above and NEWS).
+          # DEFAULT sowing -> no real season found -> harvest as early as possible. Keyed on the sowing
+          # verdict (sowing_month==0) alone rather than re-testing the warmest-window temperature against
+          # temp_spring (the spring analogue of the winter-type guard above), for the same consistency
+          # reason.
           hd_rf <- hd_first
           hd_ir <- hd_first
         } else if (seasonality=="PRECTEMP") { # T not stressful, only water limitation applies
